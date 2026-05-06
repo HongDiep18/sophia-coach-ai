@@ -5,6 +5,7 @@ import ChatInput from "../components/chat/ChatInput";
 import MessageBubble from "../components/chat/MessageBubble";
 import SpeechControls from "../components/chat/SpeechControls";
 import WordLookupModal from "../components/chat/WordLookupModal";
+import { postChatReply } from "../api";
 
 const INITIAL_SUGGESTIONS = [
   "Can we practice a mock interview?",
@@ -19,21 +20,6 @@ const createMessage = (role, content, extra = {}) => ({
   createdAt: new Date().toISOString(),
   ...extra,
 });
-
-const buildCoachReply = (input) => {
-  const trimmed = input.trim();
-  return {
-    english: `Great input. A more natural way is: "${trimmed}". Keep your answer short, clear, and confident.`,
-    vietnamese:
-      "Cau ban viet rat tot. Cach tu nhien hon la giu cau ngan gon, ro y va tu tin.",
-    analysis: "Tip: Use present simple for your current skills and routines.",
-    suggestions: [
-      "Can you give me a simpler version?",
-      "Can you correct my next answer too?",
-      "Let's practice one interview question.",
-    ],
-  };
-};
 
 function getLastAssistantEnglishText(messages) {
   const last = [...messages].reverse().find((m) => m.role === "assistant");
@@ -108,23 +94,47 @@ export default function Chat() {
     const text = value.trim();
     if (!text || isResponding) return;
 
+    const userMessage = createMessage("user", text);
     setIsResponding(true);
-    setMessages((prev) => [...prev, createMessage("user", text)]);
+    setMessages((prev) => [...prev, userMessage]);
 
-    await new Promise((resolve) => {
-      window.setTimeout(resolve, 600);
-    });
+    try {
+      const history = messages.slice(-12).map((msg) => ({
+        role: msg.role,
+        content: msg.english || msg.content || "",
+      }));
 
-    const reply = buildCoachReply(text);
-    setMessages((prev) => [
-      ...prev,
-      createMessage("assistant", reply.english, {
-        vietnamese: reply.vietnamese,
-        analysis: reply.analysis,
-        suggestions: reply.suggestions,
-      }),
-    ]);
-    setIsResponding(false);
+      const reply = await postChatReply({
+        message: text,
+        level: "B1",
+        history,
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        createMessage("assistant", reply.english, {
+          vietnamese: reply.vietnamese,
+          analysis: reply.analysis,
+          suggestions: reply.suggestions,
+        }),
+      ]);
+    } catch (_error) {
+      setMessages((prev) => [
+        ...prev,
+        createMessage(
+          "assistant",
+          "I could not reach the AI service. Please check backend and try again.",
+          {
+            vietnamese:
+              "Khong the ket noi AI. Hay kiem tra backend va thu lai.",
+            analysis: "Check backend env and server status.",
+            suggestions: ["Try again", "Restart backend", "Check API key"],
+          },
+        ),
+      ]);
+    } finally {
+      setIsResponding(false);
+    }
   };
 
   return (

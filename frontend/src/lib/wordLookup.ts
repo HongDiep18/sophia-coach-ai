@@ -1,9 +1,22 @@
-/** Offline mock lookup until a real API is wired. Keeps UI logic DRY. */
-export async function lookupWordDefinition(word, contextSentence = "") {
-  const w = word.trim().toLowerCase();
-  await new Promise((r) => setTimeout(r, 400));
+/** Offline fallback lookup when API is unavailable. */
 
-  const generic = {
+export type WordDefinitionResult = {
+  word: string;
+  definition: string;
+  vietnamese: string;
+  example: string;
+  part_of_speech: string;
+};
+
+export async function lookupWordDefinition(
+  word: string,
+  contextSentence = "",
+): Promise<WordDefinitionResult> {
+  const w = word.trim().toLowerCase();
+  await new Promise<void>((r) => setTimeout(r, 400));
+
+  const generic: WordDefinitionResult = {
+    word,
     definition: `Common English word "${word}". Practice using it in short sentences.`,
     vietnamese: `Từ tiếng Anh "${word}" — tra từ điển song ngữ khi học.`,
     example: contextSentence
@@ -12,7 +25,7 @@ export async function lookupWordDefinition(word, contextSentence = "") {
     part_of_speech: "word",
   };
 
-  const hints = {
+  const hints: Record<string, Omit<WordDefinitionResult, "word">> = {
     project: {
       definition: "A planned piece of work with a goal and timeline.",
       vietnamese: "Dự án — công việc có mục tiêu và thời hạn.",
@@ -31,5 +44,5 @@ export async function lookupWordDefinition(word, contextSentence = "") {
     if (w.includes(key)) return { ...val, word };
   }
 
-  return { ...generic, word };
+  return generic;
 }

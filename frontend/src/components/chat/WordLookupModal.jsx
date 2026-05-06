@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BookmarkPlus, Loader2, Volume2, X } from "lucide-react";
-import { lookupWordDefinition } from "../../lib/wordLookup";
 import { appendVocabToStorage } from "../../lib/vocabBank";
+import { postWordLookup } from "../../api";
 
 export default function WordLookupModal({
   word,
@@ -20,8 +20,18 @@ export default function WordLookupModal({
     setLoading(true);
     setDefinition(null);
     try {
-      const result = await lookupWordDefinition(word, contextSentence || "");
+      const result = await postWordLookup({
+        word,
+        contextSentence: contextSentence || "",
+      });
       setDefinition(result);
+    } catch (_error) {
+      setDefinition({
+        definition: "Failed to fetch definition from backend service.",
+        vietnamese: "Khong the lay nghia tu backend.",
+        example: "Please retry after backend is running.",
+        part_of_speech: "unknown",
+      });
     } finally {
       setLoading(false);
     }
