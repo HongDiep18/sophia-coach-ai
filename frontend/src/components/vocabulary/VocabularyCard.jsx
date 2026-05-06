@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { speakTextWithOptions } from "../../lib/speechPlayback";
 
 const statusConfig = {
   new: {
@@ -35,10 +36,7 @@ export default function VocabCard({ vocab, onStatusChange, onDelete }) {
   const StatusIcon = status.icon;
 
   const speakWord = () => {
-    const utterance = new SpeechSynthesisUtterance(vocab.word);
-    utterance.lang = "en-US";
-    utterance.rate = 0.8;
-    window.speechSynthesis.speak(utterance);
+    speakTextWithOptions({ text: vocab.word, lang: "en-US", rate: 0.8 });
   };
 
   const cycleStatus = () => {

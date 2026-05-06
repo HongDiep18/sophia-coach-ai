@@ -15,4 +15,6 @@ export type WordLookupReply = {
   vietnamese: string;
   example: string;
   part_of_speech: string;
+  /** Two IPA strings, e.g. UK vs US or two common variants */
+  transliterations: [string, string];
 };

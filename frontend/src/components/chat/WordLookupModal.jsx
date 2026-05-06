@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { BookmarkPlus, Loader2, Volume2, X } from "lucide-react";
 import { appendVocabToStorage } from "../../lib/vocabBank";
+import {
+  speakTextWithOptions,
+  stopSpeechPlayback,
+} from "../../lib/speechPlayback";
 import { postWordLookup } from "../../api";
+
+const IPA_LABELS = ["UK-style", "US-style"];
 
 export default function WordLookupModal({
   word,
@@ -25,12 +31,14 @@ export default function WordLookupModal({
         contextSentence: contextSentence || "",
       });
       setDefinition(result);
-    } catch (_error) {
+    } catch (error) {
+      console.error(error);
       setDefinition({
         definition: "Failed to fetch definition from backend service.",
-        vietnamese: "Khong the lay nghia tu backend.",
+        vietnamese: "Không thể lấy nghĩa từ backend.",
         example: "Please retry after backend is running.",
         part_of_speech: "unknown",
+        transliterations: ["/—/", "/—/"],
       });
     } finally {
       setLoading(false);
@@ -44,7 +52,10 @@ export default function WordLookupModal({
     }
   }, [open, word, runLookup]);
 
-  const close = () => onOpenChange?.(false);
+  const close = () => {
+    stopSpeechPlayback();
+    onOpenChange?.(false);
+  };
 
   const saveWord = async () => {
     if (!definition || !word) return;
@@ -64,14 +75,22 @@ export default function WordLookupModal({
     }
   };
 
-  const speakWord = () => {
+  /** Browsers cannot speak IPA reliably; use headword with en-GB vs en-US. */
+  const speakVariant = (index) => {
     if (!word) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(word);
-    utterance.lang = "en-US";
-    utterance.rate = 0.85;
-    window.speechSynthesis.speak(utterance);
+    speakTextWithOptions({
+      text: word,
+      lang: index === 0 ? "en-GB" : "en-US",
+      rate: 0.85,
+    });
   };
+
+  const transliterationPair =
+    definition &&
+    Array.isArray(definition.transliterations) &&
+    definition.transliterations.length >= 2
+      ? [definition.transliterations[0], definition.transliterations[1]]
+      : null;
 
   if (!open) return null;
 
@@ -96,21 +115,13 @@ export default function WordLookupModal({
           <X className="h-4 w-4" />
         </button>
 
-        <div className="mb-4 flex items-center gap-2 pr-8">
+        <div className="mb-4 pr-8">
           <h2
             id="word-lookup-title"
             className="font-mono text-xl font-semibold text-blue-700"
           >
             {word}
           </h2>
-          <button
-            type="button"
-            onClick={speakWord}
-            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-blue-700"
-            title="Play pronunciation"
-          >
-            <Volume2 className="h-4 w-4" />
-          </button>
         </div>
 
         {loading ? (
@@ -120,10 +131,50 @@ export default function WordLookupModal({
         ) : definition ? (
           <div className="space-y-4 text-sm">
             {definition.part_of_speech ? (
-              <span className="inline-block rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-600">
-                {definition.part_of_speech}
-              </span>
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500">
+                  Part of speech
+                </p>
+                <span className="inline-block rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-xs capitalize text-slate-600">
+                  {definition.part_of_speech}
+                </span>
+              </div>
             ) : null}
+
+            {transliterationPair ? (
+              <div>
+                <p className="mb-2 text-xs font-medium text-slate-500">
+                  Transliteration (IPA)
+                </p>
+                <ul className="space-y-2">
+                  {transliterationPair.map((ipa, i) => (
+                    <li
+                      key={`${ipa}-${i}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                          {IPA_LABELS[i] ?? `Variant ${i + 1}`}
+                        </p>
+                        <p className="truncate font-mono text-sm text-slate-800">
+                          {ipa}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => speakVariant(i)}
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-white hover:text-blue-700"
+                        title={`Listen (${IPA_LABELS[i] ?? `variant ${i + 1}`})`}
+                        aria-label={`Play pronunciation ${IPA_LABELS[i] ?? i + 1}`}
+                      >
+                        <Volume2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div>
               <p className="mb-1 text-xs font-medium text-slate-500">
                 Definition

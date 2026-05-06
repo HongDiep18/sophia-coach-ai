@@ -5,6 +5,7 @@ import ChatInput from "../components/chat/ChatInput";
 import MessageBubble from "../components/chat/MessageBubble";
 import SpeechControls from "../components/chat/SpeechControls";
 import WordLookupModal from "../components/chat/WordLookupModal";
+import { useSpeechPlayback } from "../hooks/useSpeechPlayback";
 import { postChatReply } from "../api";
 
 const INITIAL_SUGGESTIONS = [
@@ -47,6 +48,7 @@ export default function Chat() {
     ),
   ]);
   const scrollRef = useRef(null);
+  const speech = useSpeechPlayback();
 
   const handleWordClick = (cleanWord) => {
     setWordModal({
@@ -54,15 +56,6 @@ export default function Chat() {
       word: cleanWord,
       context: getLastAssistantEnglishText(messages),
     });
-  };
-
-  const speakText = (text, rate) => {
-    if (!text) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = rate ?? 0.75;
-    window.speechSynthesis.speak(utterance);
   };
 
   const suggestions = useMemo(() => {
@@ -88,6 +81,7 @@ export default function Chat() {
     ]);
     setIsResponding(false);
     setWordModal((prev) => ({ ...prev, open: false }));
+    speech.stop();
   };
 
   const sendMessage = async (value) => {
@@ -118,7 +112,8 @@ export default function Chat() {
           suggestions: reply.suggestions,
         }),
       ]);
-    } catch (_error) {
+    } catch (error) {
+      console.error(error);
       setMessages((prev) => [
         ...prev,
         createMessage(
@@ -149,6 +144,10 @@ export default function Chat() {
             onSpeechRateChange={setSpeechRate}
             showTranslation={showTranslation}
             onToggleTranslation={() => setShowTranslation((v) => !v)}
+            speechPlaybackState={speech.state}
+            onStopSpeech={speech.stop}
+            onPauseSpeech={speech.pause}
+            onResumeSpeech={speech.resume}
           />
           <button
             type="button"
@@ -171,7 +170,9 @@ export default function Chat() {
               key={message.id}
               message={message}
               onWordClick={handleWordClick}
-              onSpeak={speakText}
+              onSpeak={speech.speak}
+              onTipUse={sendMessage}
+              tipsDisabled={isResponding}
               showTranslation={showTranslation}
               speechRate={speechRate}
             />

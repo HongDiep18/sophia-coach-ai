@@ -26,4 +26,5 @@ export type WordLookupResponse = {
   vietnamese: string;
   example: string;
   part_of_speech: string;
+  transliterations: [string, string];
 };
