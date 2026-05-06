@@ -57,6 +57,7 @@ function VocabularyCard({ item, onCycleStatus, onDelete }) {
         display: "flex",
         flexDirection: "column",
         gap: 8,
+        height: "100%",
       }}
     >
       <div
@@ -85,11 +86,22 @@ function VocabularyCard({ item, onCycleStatus, onDelete }) {
         {item.example}
       </p>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <button type="button" onClick={() => onCycleStatus(item.id)}>
+      <div className="mt-auto flex items-center gap-3 pt-4">
+        {/* Next Status Button - Primary Action */}
+        <button
+          type="button"
+          onClick={() => onCycleStatus(item.id)}
+          className="px-4 py-2 text-sm font-medium text-white transition-colors bg-blue-600 rounded-md hover:bg-blue-700 active:bg-blue-800"
+        >
           Next Status
         </button>
-        <button type="button" onClick={() => onDelete(item.id)}>
+
+        {/* Delete Button - Danger Action */}
+        <button
+          type="button"
+          onClick={() => onDelete(item.id)}
+          className="px-4 py-2 text-sm font-medium text-slate-300 transition-all border border-slate-700 rounded-md hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50"
+        >
           Delete
         </button>
       </div>

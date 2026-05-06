@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Circle,
 } from "lucide-react";
-// 123
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
