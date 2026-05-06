@@ -1,11 +1,18 @@
-import { Eye, EyeOff, Volume2 } from "lucide-react";
+import { Eye, EyeOff, Pause, Play, Square, Volume2 } from "lucide-react";
 
 export default function SpeechControls({
   speechRate,
   onSpeechRateChange,
   showTranslation,
   onToggleTranslation,
+  speechPlaybackState,
+  onStopSpeech,
+  onPauseSpeech,
+  onResumeSpeech,
 }) {
+  const showPlayback =
+    speechPlaybackState === "playing" || speechPlaybackState === "paused";
+
   return (
     <div className="flex items-center gap-2 sm:gap-3">
       <button
@@ -20,6 +27,41 @@ export default function SpeechControls({
           <EyeOff className="h-4 w-4" />
         )}
       </button>
+
+      {showPlayback ? (
+        <div className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 px-1.5 py-1">
+          <button
+            type="button"
+            onClick={onStopSpeech}
+            title="Stop speech"
+            aria-label="Stop speech"
+            className="grid h-7 w-7 place-items-center rounded-md text-slate-600 transition hover:bg-white hover:text-red-600"
+          >
+            <Square className="h-3 w-3 fill-current" />
+          </button>
+          {speechPlaybackState === "playing" ? (
+            <button
+              type="button"
+              onClick={onPauseSpeech}
+              title="Pause speech"
+              aria-label="Pause speech"
+              className="grid h-7 w-7 place-items-center rounded-md text-slate-600 transition hover:bg-white hover:text-blue-700"
+            >
+              <Pause className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onResumeSpeech}
+              title="Resume speech"
+              aria-label="Resume speech"
+              className="grid h-7 w-7 place-items-center rounded-md text-slate-600 transition hover:bg-white hover:text-blue-700"
+            >
+              <Play className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      ) : null}
 
       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
         <Volume2 className="h-3.5 w-3.5 shrink-0 text-slate-500" />

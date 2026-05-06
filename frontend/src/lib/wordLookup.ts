@@ -6,6 +6,7 @@ export type WordDefinitionResult = {
   vietnamese: string;
   example: string;
   part_of_speech: string;
+  transliterations: [string, string];
 };
 
 export async function lookupWordDefinition(
@@ -23,6 +24,7 @@ export async function lookupWordDefinition(
       ? `Example in context: ${contextSentence.slice(0, 120)}${contextSentence.length > 120 ? "…" : ""}`
       : `I use "${word}" when I explain my work clearly.`,
     part_of_speech: "word",
+    transliterations: [`/${word}/`, `/${word}/`],
   };
 
   const hints: Record<string, Omit<WordDefinitionResult, "word">> = {
@@ -31,12 +33,14 @@ export async function lookupWordDefinition(
       vietnamese: "Dự án — công việc có mục tiêu và thời hạn.",
       example: "I'm leading a frontend project for our team.",
       part_of_speech: "noun",
+      transliterations: ["/ˈprɒdʒekt/", "/ˈprɑːdʒekt/"],
     },
     code: {
       definition: "Instructions written for a computer program.",
       vietnamese: "Mã nguồn / code — hướng dẫn cho máy tính.",
       example: "I review code every morning.",
       part_of_speech: "noun",
+      transliterations: ["/kəʊd/", "/koʊd/"],
     },
   };
 

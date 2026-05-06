@@ -28,6 +28,8 @@ export default function MessageBubble({
   message,
   onWordClick,
   onSpeak,
+  onTipUse,
+  tipsDisabled,
   showTranslation,
   speechRate,
 }) {
@@ -140,15 +142,28 @@ export default function MessageBubble({
 
                   {message.suggestions?.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
-                      {message.suggestions.map((s) => (
-                        <span
-                          key={s}
-                          className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600"
-                        >
-                          <BookOpen className="h-2.5 w-2.5 mr-1" />
-                          {s}
-                        </span>
-                      ))}
+                      {message.suggestions.map((s) =>
+                        onTipUse ? (
+                          <button
+                            key={s}
+                            type="button"
+                            disabled={tipsDisabled}
+                            onClick={() => onTipUse(s)}
+                            className="inline-flex max-w-full items-center rounded-full border border-slate-300 bg-white px-2 py-1 text-left text-xs text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 disabled:pointer-events-none disabled:opacity-50"
+                          >
+                            <BookOpen className="mr-1 h-2.5 w-2.5 shrink-0" />
+                            <span className="min-w-0 break-words">{s}</span>
+                          </button>
+                        ) : (
+                          <span
+                            key={s}
+                            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600"
+                          >
+                            <BookOpen className="mr-1 h-2.5 w-2.5" />
+                            {s}
+                          </span>
+                        ),
+                      )}
                     </div>
                   )}
                 </motion.div>

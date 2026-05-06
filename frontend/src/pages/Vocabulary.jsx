@@ -100,7 +100,7 @@ function VocabularyCard({ item, onCycleStatus, onDelete }) {
         <button
           type="button"
           onClick={() => onDelete(item.id)}
-          className="px-4 py-2 text-sm font-medium text-slate-300 transition-all border border-slate-700 rounded-md hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50"
+          className="px-4 py-2 text-sm font-medium text-slate-300 !text-black transition-all border border-slate-700 rounded-md hover:bg-red-500/10 hover:!text-red-500 hover:border-red-500/50"
         >
           Delete
         </button>
