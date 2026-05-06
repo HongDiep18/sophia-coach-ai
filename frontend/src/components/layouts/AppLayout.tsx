@@ -7,11 +7,13 @@ import {
   Settings,
   Square,
   Zap,
+  Mic,
 } from "lucide-react";
 import { useSpeechPlayback } from "../../hooks/useSpeechPlayback";
 
 const navItems = [
-  { path: "/", icon: MessageCircle, label: "Chat" },
+  { path: "/", icon: Mic, label: "Voice Assistant" },
+  { path: "/chat", icon: MessageCircle, label: "Chat" },
   { path: "/vocabulary", icon: BookOpen, label: "Vocab" },
   { path: "/settings", icon: Settings, label: "Settings" },
 ];
@@ -31,8 +33,12 @@ export default function AppLayout() {
               <Zap className="h-4 w-4 text-blue-700" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold tracking-tight text-slate-900">FluentFlow</h1>
-              <p className="text-[10px] leading-none text-slate-500">AI English Coach</p>
+              <h1 className="text-sm font-semibold tracking-tight text-slate-900">
+                FluentFlow
+              </h1>
+              <p className="text-[10px] leading-none text-slate-500">
+                AI English Coach
+              </p>
             </div>
           </Link>
 
