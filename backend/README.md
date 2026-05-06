@@ -32,6 +32,24 @@ Node.js + TypeScript API that proxies requests to Google Gemini. The frontend ne
    - `GEMINI_API_KEY` — your real key (required)
    - `PORT` — server port (default `4000`)
    - `GEMINI_MODEL` — model id (default `gemini-2.5-flash`)
+   - `DATABASE_URL` — PostgreSQL connection string (required for DB init)
+
+## PostgreSQL schema (conversations + vocab)
+
+The project now includes a PostgreSQL schema for:
+
+- `users`
+- `conversations`
+- `messages`
+- `vocabulary_items`
+
+Initialize schema:
+
+```bash
+npm run db:init
+```
+
+This runs `src/db/schema.sql` against `DATABASE_URL`.
 
 ## Run
 

@@ -43,43 +43,6 @@ export default function AppLayout() {
           </Link>
 
           <nav className="flex items-center gap-1">
-            {showHeaderPlayback ? (
-              <div
-                className="mr-1 flex items-center gap-0.5 rounded-lg border border-blue-200 bg-blue-50/90 px-1 py-0.5"
-                title="Text-to-speech"
-              >
-                <span className="hidden px-1 text-[10px] font-medium text-slate-500 sm:inline">
-                  Speaking
-                </span>
-                <button
-                  type="button"
-                  onClick={speech.stop}
-                  aria-label="Stop speech"
-                  className="grid h-7 w-7 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-red-600"
-                >
-                  <Square className="h-2.5 w-2.5 fill-current" />
-                </button>
-                {speech.state === "playing" ? (
-                  <button
-                    type="button"
-                    onClick={speech.pause}
-                    aria-label="Pause speech"
-                    className="grid h-7 w-7 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-blue-700"
-                  >
-                    <Pause className="h-3 w-3" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={speech.resume}
-                    aria-label="Resume speech"
-                    className="grid h-7 w-7 place-items-center rounded-md text-slate-600 hover:bg-white hover:text-blue-700"
-                  >
-                    <Play className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            ) : null}
             {navItems.map(({ path, icon: Icon, label }) => {
               const isActive = location.pathname === path;
               return (
