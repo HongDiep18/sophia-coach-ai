@@ -7,6 +7,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_FALLBACK_MODELS: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

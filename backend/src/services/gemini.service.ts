@@ -29,95 +29,190 @@ function extractJsonObject(raw: string) {
   return withoutFence.slice(first, last + 1);
 }
 
+function getModelCandidates(): string[] {
+  const fallbacks = (env.GEMINI_FALLBACK_MODELS ?? "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  return [env.GEMINI_MODEL, ...fallbacks].filter(
+    (m, i, arr) => arr.indexOf(m) === i,
+  );
+}
+
+function isRetryableModelBusy(status: number, errorText: string): boolean {
+  if (status === 503 || status === 429) return true;
+  const t = errorText.toLowerCase();
+  return (
+    t.includes("unavailable") ||
+    t.includes("high demand") ||
+    t.includes("resource exhausted")
+  );
+}
+
+function isHardQuotaExceeded(errorText: string): boolean {
+  const t = errorText.toLowerCase();
+  return (
+    t.includes("quota exceeded") &&
+    (t.includes("limit: 0") || t.includes("free_tier"))
+  );
+}
+
+function parseRetryDelayMs(errorText: string): number | null {
+  const m = errorText.match(/retry in\s+(\d+(?:\.\d+)?)s/i);
+  if (!m) return null;
+  const sec = Number(m[1]);
+  if (!Number.isFinite(sec) || sec <= 0) return null;
+  return Math.min(5000, Math.round(sec * 1000));
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function generateStructuredJson<T>(prompt: string): Promise<T> {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const models = getModelCandidates();
+  let lastError: Error | null = null;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  for (let i = 0; i < models.length; i += 1) {
+    const model = models[i];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
 
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      signal: controller.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.4,
-          responseMimeType: "application/json",
-        },
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini error: ${response.status} ${errorText}`);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.4,
+            responseMimeType: "application/json",
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        if (isHardQuotaExceeded(errorText)) {
+          throw new Error(`Gemini quota exhausted (hard limit). ${errorText}`);
+        }
+        const err = new Error(
+          `Gemini error (${model}): ${response.status} ${errorText}`,
+        );
+        const shouldRetry =
+          i < models.length - 1 &&
+          isRetryableModelBusy(response.status, errorText);
+        if (shouldRetry) {
+          const delay = parseRetryDelayMs(errorText) ?? 600;
+          await sleep(delay);
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+
+      const data = (await response.json()) as GeminiResponse;
+      const text = extractTextDelta(data);
+      const jsonString = extractJsonObject(text);
+      return JSON.parse(jsonString) as T;
+    } catch (error) {
+      lastError = error as Error;
+      if (i === models.length - 1) throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const data = (await response.json()) as GeminiResponse;
-    const text = extractTextDelta(data);
-    const jsonString = extractJsonObject(text);
-    return JSON.parse(jsonString) as T;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError ?? new Error("Gemini failed for all configured models");
 }
 
 export async function* generateTextStream(
   prompt: string,
 ): AsyncGenerator<string, void, void> {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${env.GEMINI_API_KEY}`;
+  const models = getModelCandidates();
+  let lastError: Error | null = null;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  for (let i = 0; i < models.length; i += 1) {
+    const model = models[i];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${env.GEMINI_API_KEY}`;
 
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      signal: controller.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.5 },
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
-    if (!response.ok || !response.body) {
-      const errorText = await response.text().catch(() => "");
-      throw new Error(`Gemini stream error: ${response.status} ${errorText}`);
-    }
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.5 },
+        }),
+      });
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
+      if (!response.ok || !response.body) {
+        const errorText = await response.text().catch(() => "");
+        if (isHardQuotaExceeded(errorText)) {
+          throw new Error(`Gemini quota exhausted (hard limit). ${errorText}`);
+        }
+        const err = new Error(
+          `Gemini stream error (${model}): ${response.status} ${errorText}`,
+        );
+        const shouldRetry =
+          i < models.length - 1 &&
+          isRetryableModelBusy(response.status, errorText);
+        if (shouldRetry) {
+          const delay = parseRetryDelayMs(errorText) ?? 600;
+          await sleep(delay);
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      // SSE frames are separated by blank lines.
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() ?? "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-      for (const frame of frames) {
-        const lines = frame.split("\n");
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-          const payload = trimmed.slice("data:".length).trim();
-          if (!payload || payload === "[DONE]") continue;
-          try {
-            const json = JSON.parse(payload) as GeminiResponse;
-            const delta = extractTextDelta(json);
-            if (delta) yield delta;
-          } catch {
-            // ignore invalid JSON frames
+        // SSE frames are separated by blank lines.
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+
+        for (const frame of frames) {
+          const lines = frame.split("\n");
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+            const payload = trimmed.slice("data:".length).trim();
+            if (!payload || payload === "[DONE]") continue;
+            try {
+              const json = JSON.parse(payload) as GeminiResponse;
+              const delta = extractTextDelta(json);
+              if (delta) yield delta;
+            } catch {
+              // ignore invalid JSON frames
+            }
           }
         }
       }
+      return;
+    } catch (error) {
+      lastError = error as Error;
+      if (i === models.length - 1) throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw (
+    lastError ?? new Error("Gemini stream failed for all configured models")
+  );
 }

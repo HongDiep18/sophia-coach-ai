@@ -32,6 +32,7 @@ Node.js + TypeScript API that proxies requests to Google Gemini. The frontend ne
    - `GEMINI_API_KEY` — your real key (required)
    - `PORT` — server port (default `4000`)
    - `GEMINI_MODEL` — model id (default `gemini-2.5-flash`)
+   - `GEMINI_FALLBACK_MODELS` — comma-separated backup models when primary is busy (optional)
    - `DATABASE_URL` — PostgreSQL connection string (required for DB init)
 
 ## PostgreSQL schema (conversations + vocab)
