@@ -47,7 +47,8 @@ export default function WordLookupModal({
 
   useEffect(() => {
     if (open && word) {
-      setSaved(false);
+      // Avoid synchronous setState inside effect (lint + cascading renders).
+      queueMicrotask(() => setSaved(false));
       runLookup();
     }
   }, [open, word, runLookup]);

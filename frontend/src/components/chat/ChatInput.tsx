@@ -2,17 +2,50 @@ import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Mic, MicOff, Send, Sparkles } from "lucide-react";
 
-const getSpeechRecognition = () =>
-  window.SpeechRecognition || window.webkitSpeechRecognition;
+type ChatInputProps = {
+  onSend: (text: string) => void;
+  isLoading: boolean;
+  suggestions?: string[];
+};
+
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+const getSpeechRecognition = (): SpeechRecognitionCtor | null => {
+  if (typeof window === "undefined") return null;
+  const w = window as typeof window & {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+};
 
 const isSpeechRecognitionSupported = () => Boolean(getSpeechRecognition());
 
-export default function ChatInput({ onSend, isLoading, suggestions }) {
+export default function ChatInput({
+  onSend,
+  isLoading,
+  suggestions,
+}: ChatInputProps) {
   const [text, setText] = useState("");
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
-  const sendText = (value) => {
+  const sendText = (value: string) => {
     const normalized = value.trim();
     if (!normalized || isLoading) return;
     onSend(normalized);
@@ -32,13 +65,15 @@ export default function ChatInput({ onSend, isLoading, suggestions }) {
     }
 
     const SpeechRecognition = getSpeechRecognition();
+    if (!SpeechRecognition) return;
+
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
+      const transcript = event.results[0]?.[0]?.transcript ?? "";
       setText(transcript);
       setIsListening(false);
     };
@@ -53,7 +88,7 @@ export default function ChatInput({ onSend, isLoading, suggestions }) {
 
   return (
     <div className="space-y-3">
-      {suggestions?.length > 0 && (
+      {suggestions?.length ? (
         <div className="flex flex-wrap gap-2">
           {suggestions.map((suggestion) => (
             <button
@@ -68,7 +103,7 @@ export default function ChatInput({ onSend, isLoading, suggestions }) {
             </button>
           ))}
         </div>
-      )}
+      ) : null}
 
       <div className="flex items-center gap-2">
         <button
@@ -80,7 +115,11 @@ export default function ChatInput({ onSend, isLoading, suggestions }) {
               : "border-slate-300 bg-white text-slate-600 hover:text-slate-900"
           }`}
         >
-          {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          {isListening ? (
+            <MicOff className="h-4 w-4" />
+          ) : (
+            <Mic className="h-4 w-4" />
+          )}
         </button>
 
         <div className="relative flex-1">
@@ -88,10 +127,10 @@ export default function ChatInput({ onSend, isLoading, suggestions }) {
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendText(text)}
-            placeholder={
-              isListening ? "Listening..." : "Type or speak English..."
-            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendText(text);
+            }}
+            placeholder={isListening ? "Listening..." : "Type or speak English..."}
             disabled={isLoading}
             className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-12 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-200 disabled:opacity-70"
           />

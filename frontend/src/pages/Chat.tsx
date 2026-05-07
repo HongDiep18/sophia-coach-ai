@@ -14,7 +14,7 @@ const INITIAL_SUGGESTIONS = [
   "Help me answer like a software developer.",
 ];
 
-const createMessage = (role, content, extra = {}) => ({
+const createMessage = (role: string, content: string, extra: any = {}) => ({
   id: crypto.randomUUID(),
   role,
   content,
@@ -22,7 +22,7 @@ const createMessage = (role, content, extra = {}) => ({
   ...extra,
 });
 
-function getLastAssistantEnglishText(messages) {
+function getLastAssistantEnglishText(messages: any[]) {
   const last = [...messages].reverse().find((m) => m.role === "assistant");
   return last?.english || last?.content || "";
 }
@@ -37,7 +37,7 @@ export default function Chat() {
     word: "",
     context: "",
   });
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<any[]>([
     createMessage(
       "assistant",
       "Hi! I am your English speaking coach. Tell me about your current project.",
@@ -47,10 +47,10 @@ export default function Chat() {
       },
     ),
   ]);
-  const scrollRef = useRef(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const speech = useSpeechPlayback();
 
-  const handleWordClick = (cleanWord) => {
+  const handleWordClick = (cleanWord: string) => {
     setWordModal({
       open: true,
       word: cleanWord,
@@ -84,7 +84,7 @@ export default function Chat() {
     speech.stop();
   };
 
-  const sendMessage = async (value) => {
+  const sendMessage = async (value: string) => {
     const text = value.trim();
     if (!text || isResponding) return;
 
