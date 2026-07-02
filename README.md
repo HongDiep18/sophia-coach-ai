@@ -2,10 +2,10 @@
 
 Full-stack English coaching app: a **React (Vite)** frontend for chat, vocabulary, settings, and voice-assisted coaching, backed by a **Node.js + Express** API that calls **Google Gemini**. The browser never sees your Gemini API key; only the backend uses it.
 
-| Part | Tech | Role |
-|------|------|------|
-| **Frontend** (`frontend/`) | React 19, Vite 8, Tailwind v4, React Router | UI, calls HTTP + WebSocket to the backend |
-| **Backend** (`backend/`) | Express 5, TypeScript, `ws`, Zod | REST API, streaming voice WebSocket, Gemini proxy |
+| Part                       | Tech                                        | Role                                              |
+| -------------------------- | ------------------------------------------- | ------------------------------------------------- |
+| **Frontend** (`frontend/`) | React 19, Vite 8, Tailwind v4, React Router | UI, calls HTTP + WebSocket to the backend         |
+| **Backend** (`backend/`)   | Express 5, TypeScript, `ws`, Zod            | REST API, streaming voice WebSocket, Gemini proxy |
 
 More detail per folder: [`frontend/README.md`](frontend/README.md), [`backend/README.md`](backend/README.md).
 
@@ -59,13 +59,13 @@ cp .env.example .env
 
 Edit `backend/.env`:
 
-| Variable | Required for server? | Description |
-|----------|----------------------|-------------|
-| `GEMINI_API_KEY` | **Yes** | Your Gemini key. The server fails to start without it (see `backend/src/config/env.ts`). |
-| `PORT` | No | HTTP port (default `4000`). |
-| `GEMINI_MODEL` | No | Model id (default `gemini-2.5-flash`). |
-| `GEMINI_FALLBACK_MODELS` | No | Comma-separated fallbacks if the primary model is unavailable. |
-| `DATABASE_URL` | Only for `db:init` | PostgreSQL URL, e.g. `postgresql://user:pass@localhost:5432/sophia`. Not validated at server startup; chat/voice work without it until you wire DB features. |
+| Variable                 | Required for server? | Description                                                                                                                                                  |
+| ------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GEMINI_API_KEY`         | **Yes**              | Your Gemini key. The server fails to start without it (see `backend/src/config/env.ts`).                                                                     |
+| `PORT`                   | No                   | HTTP port (default `4000`).                                                                                                                                  |
+| `GEMINI_MODEL`           | No                   | Model id (default `gemini-2.5-flash`).                                                                                                                       |
+| `GEMINI_FALLBACK_MODELS` | No                   | Comma-separated fallbacks if the primary model is unavailable.                                                                                               |
+| `DATABASE_URL`           | Only for `db:init`   | PostgreSQL URL, e.g. `postgresql://user:pass@localhost:5432/sophia`. Not validated at server startup; chat/voice work without it until you wire DB features. |
 
 Example snippet:
 
@@ -109,13 +109,13 @@ npm start
 
 ### Backend scripts
 
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | `tsx watch src/server.ts` — hot reload |
-| `npm run build` | Compile TypeScript to `dist/` |
-| `npm start` | Run `node dist/server.js` |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run db:init` | Apply `schema.sql` using `DATABASE_URL` |
+| Command             | Purpose                                 |
+| ------------------- | --------------------------------------- |
+| `npm run dev`       | `tsx watch src/server.ts` — hot reload  |
+| `npm run build`     | Compile TypeScript to `dist/`           |
+| `npm start`         | Run `node dist/server.js`               |
+| `npm run typecheck` | `tsc --noEmit`                          |
+| `npm run db:init`   | Apply `schema.sql` using `DATABASE_URL` |
 
 ---
 
@@ -150,12 +150,12 @@ Open the URL Vite prints (typically **http://localhost:5173**).
 
 ### Other frontend commands
 
-| Command | Purpose |
-|---------|---------|
-| `npm run build` | Production build to `dist/` |
-| `npm run preview` | Serve the production build locally |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | `tsc --noEmit` |
+| Command             | Purpose                            |
+| ------------------- | ---------------------------------- |
+| `npm run build`     | Production build to `dist/`        |
+| `npm run preview`   | Serve the production build locally |
+| `npm run lint`      | ESLint                             |
+| `npm run typecheck` | `tsc --noEmit`                     |
 
 ---
 
@@ -189,12 +189,12 @@ Open the URL Vite prints (typically **http://localhost:5173**).
 
 Base URL: `http://localhost:<PORT>` (default port `4000`).
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check |
-| `GET` | `/api/health` | Same, under `/api` |
-| `POST` | `/api/chat/reply` | Coach reply. Body (JSON): `message`, optional `level` (default `B1`), optional `history` array of `{ role: "user" \| "assistant", content }`. |
-| `POST` | `/api/word/lookup` | Word help. Body: `word`, optional `contextSentence`. |
+| Method | Path               | Description                                                                                                                                   |
+| ------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/health`          | Health check                                                                                                                                  |
+| `GET`  | `/api/health`      | Same, under `/api`                                                                                                                            |
+| `POST` | `/api/chat/reply`  | Coach reply. Body (JSON): `message`, optional `level` (default `B1`), optional `history` array of `{ role: "user" \| "assistant", content }`. |
+| `POST` | `/api/word/lookup` | Word help. Body: `word`, optional `contextSentence`.                                                                                          |
 
 **WebSocket:** `ws://localhost:<PORT>/ws/voice` — voice streaming; server sends `server.ready`, streamed assistant deltas, etc. (see `backend/src/ws/voice.ws.ts`).
 
