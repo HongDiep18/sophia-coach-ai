@@ -10,6 +10,7 @@ import {
   Mic,
 } from "lucide-react";
 import { useSpeechPlayback } from "../../hooks/useSpeechPlayback";
+import FloatingChatButton from "../FloatingChatButton";
 
 const navItems = [
   { path: "/", icon: Mic, label: "Voice Assistant" },
@@ -67,6 +68,8 @@ export default function AppLayout() {
       <main className="flex-1 overflow-hidden px-4 py-4">
         <Outlet />
       </main>
+
+      {location.pathname !== "/chat" && <FloatingChatButton />}
     </div>
   );
 }
