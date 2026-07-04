@@ -16,6 +16,17 @@ export type ChatReplyResponse = {
   suggestions: string[];
 };
 
+export type ChatbotRequest = {
+  message: string;
+  history: ChatHistoryItem[];
+};
+
+export type ChatbotResponse = {
+  answer: string;
+  sources: string[];
+  grounded: boolean;
+};
+
 export type WordLookupRequest = {
   word: string;
   contextSentence?: string;
