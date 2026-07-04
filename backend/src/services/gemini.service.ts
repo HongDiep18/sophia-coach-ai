@@ -69,6 +69,92 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type EmbeddingResponse = {
+  embedding?: { values?: number[] };
+};
+
+/**
+ * Turn a piece of text into an embedding vector using Gemini's embedding
+ * model (env.EMBEDDING_MODEL, default gemini-embedding-001). The vector has
+ * env.EMBEDDING_DIM numbers, which MUST match the vector(N) column in
+ * knowledge_chunks. Vectors are L2-normalized: Google only normalizes the
+ * full 3072-dim output automatically, so we normalize reduced dimensions
+ * ourselves — this keeps cosine similarity well-behaved.
+ *
+ * taskType tunes the embedding for its purpose: use RETRIEVAL_DOCUMENT when
+ * storing knowledge, RETRIEVAL_QUERY when embedding a user's question.
+ */
+export async function embedText(
+  text: string,
+  taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" = "RETRIEVAL_DOCUMENT",
+): Promise<number[]> {
+  const model = env.EMBEDDING_MODEL;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${env.GEMINI_API_KEY}`;
+
+  const maxAttempts = 4;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: `models/${model}`,
+          content: { parts: [{ text }] },
+          taskType,
+          outputDimensionality: env.EMBEDDING_DIM,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        if (isHardQuotaExceeded(errorText)) {
+          throw new Error(`Gemini quota exhausted (hard limit). ${errorText}`);
+        }
+        const err = new Error(
+          `Gemini embedding error (${model}): ${response.status} ${errorText}`,
+        );
+        if (
+          attempt < maxAttempts - 1 &&
+          isRetryableModelBusy(response.status, errorText)
+        ) {
+          const delay = parseRetryDelayMs(errorText) ?? 600 * (attempt + 1);
+          await sleep(delay);
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+
+      const data = (await response.json()) as EmbeddingResponse;
+      const values = data.embedding?.values;
+      if (!values || values.length === 0) {
+        throw new Error("Gemini embedding returned no values");
+      }
+      if (values.length !== env.EMBEDDING_DIM) {
+        throw new Error(
+          `Embedding dimension mismatch: got ${values.length}, expected ${env.EMBEDDING_DIM}`,
+        );
+      }
+
+      const norm = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
+      return norm > 0 ? values.map((v) => v / norm) : values;
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt === maxAttempts - 1) throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw lastError ?? new Error("Gemini embedding failed");
+}
+
 export async function generateStructuredJson<T>(prompt: string): Promise<T> {
   const models = getModelCandidates();
   let lastError: Error | null = null;

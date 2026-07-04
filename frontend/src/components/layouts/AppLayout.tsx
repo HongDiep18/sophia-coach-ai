@@ -1,15 +1,5 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
-import {
-  BookOpen,
-  MessageCircle,
-  Pause,
-  Play,
-  Settings,
-  Square,
-  Zap,
-  Mic,
-} from "lucide-react";
-import { useSpeechPlayback } from "../../hooks/useSpeechPlayback";
+import { BookOpen, MessageCircle, Settings, Zap, Mic } from "lucide-react";
 import FloatingChatButton from "../FloatingChatButton";
 
 const navItems = [
@@ -21,9 +11,6 @@ const navItems = [
 
 export default function AppLayout() {
   const location = useLocation();
-  const speech = useSpeechPlayback();
-  const showHeaderPlayback =
-    speech.state !== "idle" && location.pathname !== "/";
 
   return (
     <div className="flex h-screen flex-col bg-transparent">
