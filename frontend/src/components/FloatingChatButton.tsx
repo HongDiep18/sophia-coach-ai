@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bot, Loader2, Send, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { postChatbotReply } from "../api";
 import type { ChatHistoryItem } from "../api/types";
 
@@ -20,7 +20,7 @@ const WELCOME: ChatMessage = {
 };
 
 // Pool of hint questions. Three are shown at a time; tapping one sends it and
-// rotates in fresh ones from the rest of the pool.
+// rotates in fresh ones from the rest of the pool only when the pool is empty
 const QUESTION_POOL = [
   "How do I save a word to my vocabulary?",
   "Which browser do I need for the Voice Assistant?",
