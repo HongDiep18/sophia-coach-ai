@@ -1,0 +1,24 @@
+# Local Postgres with the pgvector extension preinstalled.
+# Start it with:  docker compose up -d
+# Then:           npm run db:init
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: sophia-coach-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sophia-coach-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sophia -d sophia_coach"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  sophia-coach-pgdata:

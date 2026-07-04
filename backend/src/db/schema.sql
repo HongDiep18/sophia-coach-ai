@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,6 +50,19 @@ CREATE TABLE IF NOT EXISTS vocabulary_items (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Knowledge base for RAG. `embedding` dimension (768) MUST match
+-- EMBEDDING_DIM in config/env.ts and the model set in EMBEDDING_MODEL
+-- (gemini-embedding-001 with output_dimensionality=768). Changing the
+-- model or dimension later requires re-embedding every row.
+-- `metadata` holds flexible extras (source URL, title, tags) as JSON.
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content TEXT NOT NULL,
+  embedding vector(768) NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  crawled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_conversations_user_last_message
   ON conversations (user_id, last_message_at DESC);
 
@@ -63,3 +77,9 @@ CREATE INDEX IF NOT EXISTS idx_vocab_user_created_at
 
 CREATE INDEX IF NOT EXISTS idx_vocab_user_word
   ON vocabulary_items (user_id, word);
+
+-- Approximate nearest-neighbour index for cosine similarity search.
+-- HNSW gives good recall on an empty-to-growing table; the query side
+-- must use the cosine distance operator (<=>) to hit this index.
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_embedding
+  ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);
