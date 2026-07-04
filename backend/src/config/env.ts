@@ -13,11 +13,13 @@ const envSchema = z.object({
   // the vector(N) column in db/schema.sql (knowledge_chunks.embedding).
   EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
   EMBEDDING_DIM: z.coerce.number().default(768),
-  // RAG retrieval tuning. RAG_TOP_K = how many chunks to fetch per question;
-  // RAG_MIN_SCORE = cosine similarity floor (0–1) below which a chunk is
-  // treated as "not really relevant" and dropped.
+  // RAG retrieval tuning. RAG_TOP_K = how many chunks to fetch per question.
+  // RAG_MIN_SCORE = a LENIENT cosine floor that only blocks truly irrelevant
+  // chunks (~0.58 nonsense band). Borderline/near-miss questions pass through
+  // to the model, whose prompt rules ("answer only from context, else say you
+  // are not sure") judge the gray zone. Two safety nets, not one.
   RAG_TOP_K: z.coerce.number().default(4),
-  RAG_MIN_SCORE: z.coerce.number().default(0.66),
+  RAG_MIN_SCORE: z.coerce.number().default(0.6),
 });
 
 export const env = envSchema.parse(process.env);
