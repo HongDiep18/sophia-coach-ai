@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bot, Loader2, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { postChatbotReply } from "../api";
-import type { ChatHistoryItem } from "../api/types";
+import type { ChatHistoryItem } from "../api";
 
 type ChatMessage = {
   id: string;
