@@ -11,6 +11,8 @@ export type ChatReplyRequest = {
 
 export type ChatReplyResponse = {
   english: string;
+  // Learner's latest message rewritten in natural, correct English.
+  corrected: string;
   vietnamese: string;
   analysis: string;
   suggestions: string[];

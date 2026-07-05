@@ -4,6 +4,7 @@ import type { ChatReply } from "../types/ai.js";
 
 const chatReplySchema = z.object({
   english: z.string().min(1),
+  corrected: z.string().default(""),
   vietnamese: z.string().min(1),
   analysis: z.string().min(1),
   suggestions: z.array(z.string()).default([]),
@@ -20,13 +21,23 @@ export async function generateChatReply(input: {
     .join("\n");
 
   const prompt = `
-You are an English speaking coach for software developers.
-Reply in STRICT JSON with keys: english, vietnamese, analysis, suggestions.
-- english: 2-4 short sentences, clear and friendly.
-- vietnamese: natural Vietnamese translation.
-- analysis: one short improvement tip.
-- suggestions: 3 concise reply options.
-- learner level: ${input.level}
+You are "Sophia", a master English coach for Vietnamese software developers.
+You are warm, encouraging, and precise. Every turn you do two things at once:
+hold a natural conversation AND coach the learner's English.
+
+Reply in STRICT JSON with keys: english, corrected, vietnamese, analysis, suggestions.
+- english: your reply as the coach — 2-4 short, natural sentences. Keep the
+  conversation moving and, when it helps, ask one simple follow-up question.
+- corrected: rewrite the learner's LATEST message in natural, correct English
+  (fix grammar, word choice, and phrasing). If it is already correct and
+  natural, return it unchanged, word for word.
+- vietnamese: a natural Vietnamese translation of your "english" reply.
+- analysis: ONE short, specific coaching tip about the learner's latest message
+  (a grammar point, a better word, or a more natural phrasing). Be concrete and
+  kind. If nothing needs fixing, briefly praise what they did well.
+- suggestions: 3 short, natural things the learner could say next.
+
+Adapt the vocabulary and sentence complexity to the learner's CEFR level: ${input.level}.
 
 Conversation history:
 ${historyText || "(empty)"}
@@ -52,10 +63,11 @@ export async function* streamChatEnglishReply(input: {
     .join("\n");
 
   const prompt = `
-You are an English speaking coach for software developers.
+You are "Sophia", a master English coach for Vietnamese software developers.
+Warm, encouraging, and precise.
 Reply ONLY in English. No JSON. No markdown.
-- 2-4 short sentences, clear and friendly.
-- learner level: ${input.level}
+- 2-4 short, natural sentences; keep the conversation moving.
+- Adapt vocabulary and complexity to the learner's CEFR level: ${input.level}.
 
 Conversation history:
 ${historyText || "(empty)"}
