@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { loadVocabFromStorage } from "../lib/vocabBank";
+import { useEffect, useMemo, useState } from "react";
+import { deleteVocab, getVocab, updateVocabStatus } from "../api";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All" },
@@ -13,30 +13,6 @@ const STATUS_COLORS = {
   learning: "#f59e0b",
   mastered: "#16a34a",
 };
-
-const INITIAL_VOCAB = [
-  {
-    id: "v-1",
-    word: "scalable",
-    meaning: "Able to grow without losing performance.",
-    example: "We need a scalable backend for more users.",
-    learning_status: "learning",
-  },
-  {
-    id: "v-2",
-    word: "refactor",
-    meaning: "Improve code structure without changing behavior.",
-    example: "I will refactor this component tomorrow.",
-    learning_status: "new",
-  },
-  {
-    id: "v-3",
-    word: "deploy",
-    meaning: "Release software to production.",
-    example: "We deploy every Friday evening.",
-    learning_status: "mastered",
-  },
-];
 
 const nextStatus = {
   new: "learning",
@@ -112,10 +88,27 @@ function VocabularyCard({ item, onCycleStatus, onDelete }) {
 export default function Vocabulary() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [vocab, setVocab] = useState(() => [
-    ...loadVocabFromStorage(),
-    ...INITIAL_VOCAB,
-  ]);
+  const [vocab, setVocab] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getVocab()
+      .then((data) => {
+        if (active) setVocab(data.items);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (active) setError("Could not load your vocabulary from the server.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const searchTerm = search.trim().toLowerCase();
 
@@ -141,18 +134,25 @@ export default function Vocabulary() {
     );
   }, [vocab]);
 
-  const updateStatus = (id) => {
-    setVocab((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, learning_status: nextStatus[item.learning_status] }
-          : item,
-      ),
-    );
+  const updateStatus = async (id) => {
+    const current = vocab.find((item) => item.id === id);
+    if (!current) return;
+    const target = nextStatus[current.learning_status];
+    try {
+      const { item } = await updateVocabStatus(id, target);
+      setVocab((prev) => prev.map((v) => (v.id === id ? item : v)));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const deleteWord = (id) => {
-    setVocab((prev) => prev.filter((item) => item.id !== id));
+  const deleteWord = async (id) => {
+    try {
+      await deleteVocab(id);
+      setVocab((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -218,7 +218,31 @@ export default function Vocabulary() {
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div
+          style={{
+            border: "1px dashed #cbd5e1",
+            borderRadius: 12,
+            padding: 32,
+            textAlign: "center",
+            color: "#64748b",
+          }}
+        >
+          Loading your vocabulary…
+        </div>
+      ) : error ? (
+        <div
+          style={{
+            border: "1px dashed #fca5a5",
+            borderRadius: 12,
+            padding: 32,
+            textAlign: "center",
+            color: "#b91c1c",
+          }}
+        >
+          {error}
+        </div>
+      ) : filtered.length === 0 ? (
         <div
           style={{
             border: "1px dashed #cbd5e1",
