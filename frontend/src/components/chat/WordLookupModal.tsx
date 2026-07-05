@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { BookmarkPlus, Loader2, Volume2, X } from "lucide-react";
-import { appendVocabToStorage } from "../../lib/vocabBank";
 import {
   speakTextWithOptions,
   stopSpeechPlayback,
 } from "../../lib/speechPlayback";
-import { postWordLookup } from "../../api";
+import { postWordLookup, saveVocab } from "../../api";
 
 const IPA_LABELS = ["UK-style", "US-style"];
 
@@ -14,12 +13,13 @@ export default function WordLookupModal({
   contextSentence,
   open,
   onOpenChange,
-  conversationId,
 }) {
   const [definition, setDefinition] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // "created" (new word stored) or "already_exists" (was saved before).
+  const [saveStatus, setSaveStatus] = useState(null);
 
   const runLookup = useCallback(async () => {
     if (!word?.trim()) return;
@@ -48,7 +48,10 @@ export default function WordLookupModal({
   useEffect(() => {
     if (open && word) {
       // Avoid synchronous setState inside effect (lint + cascading renders).
-      queueMicrotask(() => setSaved(false));
+      queueMicrotask(() => {
+        setSaved(false);
+        setSaveStatus(null);
+      });
       runLookup();
     }
   }, [open, word, runLookup]);
@@ -62,15 +65,16 @@ export default function WordLookupModal({
     if (!definition || !word) return;
     setSaving(true);
     try {
-      appendVocabToStorage({
+      const result = await saveVocab({
         word: word.trim(),
         meaning: definition.definition,
         vietnamese: definition.vietnamese,
         example: definition.example,
-        context_sentence: contextSentence || definition.example || "",
-        conversation_id: conversationId || "",
       });
       setSaved(true);
+      setSaveStatus(result.status);
+    } catch (error) {
+      console.error(error);
     } finally {
       setSaving(false);
     }
@@ -220,7 +224,11 @@ export default function WordLookupModal({
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saved ? (
-              "Saved ✓"
+              saveStatus === "already_exists" ? (
+                "Already saved"
+              ) : (
+                "Saved ✓"
+              )
             ) : saving ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving

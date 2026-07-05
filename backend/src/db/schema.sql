@@ -75,8 +75,18 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation_created_at
 CREATE INDEX IF NOT EXISTS idx_vocab_user_created_at
   ON vocabulary_items (user_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_vocab_user_word
-  ON vocabulary_items (user_id, word);
+-- Case-insensitive uniqueness per user. This backs the duplicate-safe
+-- "insert, or do nothing if already saved" behaviour (ON CONFLICT) used
+-- when saving vocabulary, and doubles as the lookup index by user+word.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_vocab_user_word
+  ON vocabulary_items (user_id, lower(word));
+
+-- Single shared "default" user. Until real accounts/login exist, every
+-- saved vocabulary item is attached to this fixed user id (see
+-- DEFAULT_USER_ID in services/vocab.service.ts). Keep the two in sync.
+INSERT INTO users (id, email, display_name)
+VALUES ('00000000-0000-0000-0000-000000000001', 'default@sophia.local', 'Default User')
+ON CONFLICT (id) DO NOTHING;
 
 -- Approximate nearest-neighbour index for cosine similarity search.
 -- HNSW gives good recall on an empty-to-growing table; the query side

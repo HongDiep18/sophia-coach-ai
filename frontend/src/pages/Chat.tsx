@@ -31,7 +31,8 @@ export default function Chat() {
   const [isResponding, setIsResponding] = useState(false);
   const [showTranslation, setShowTranslation] = useState(true);
   const [speechRate, setSpeechRate] = useState(0.75);
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  // Session id resets on "new chat"; the setter is what matters here.
+  const [, setSessionId] = useState(() => crypto.randomUUID());
   const [wordModal, setWordModal] = useState({
     open: false,
     word: "",
@@ -210,7 +211,6 @@ export default function Chat() {
         contextSentence={wordModal.context}
         open={wordModal.open}
         onOpenChange={(open) => setWordModal((prev) => ({ ...prev, open }))}
-        conversationId={sessionId}
       />
     </section>
   );
