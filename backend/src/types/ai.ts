@@ -5,6 +5,9 @@ export type ChatHistoryItem = {
 
 export type ChatReply = {
   english: string;
+  /** The learner's latest message rewritten in natural, correct English.
+   *  Equals the original when it was already correct. */
+  corrected: string;
   vietnamese: string;
   analysis: string;
   suggestions: string[];

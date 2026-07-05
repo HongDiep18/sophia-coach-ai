@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   Lightbulb,
+  Sparkles,
   Volume2,
 } from "lucide-react";
 
@@ -36,6 +37,14 @@ export default function MessageBubble({
   const [expanded, setExpanded] = useState(false);
   const isUser = message.role === "user";
 
+  // Show the coach's rewrite only when it actually differs from what the
+  // learner typed (the model returns the text unchanged when it was fine).
+  const normalize = (text) => (text || "").trim().replace(/\s+/g, " ");
+  const hasCorrection =
+    isUser &&
+    message.corrected &&
+    normalize(message.corrected) !== normalize(message.content);
+
   const speakText = (text) => {
     if (!onSpeak) return;
     onSpeak(text, speechRate);
@@ -55,6 +64,32 @@ export default function MessageBubble({
           className={`${baseBubbleClass} max-w-[80%] rounded-br-sm border-blue-200 bg-blue-50 text-slate-900`}
         >
           <p>{message.content}</p>
+
+          {hasCorrection && (
+            <div className="border-t border-blue-200 pt-2">
+              <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-emerald-600">
+                    Better way to say it
+                  </p>
+                  <div className="flex items-start gap-1.5">
+                    <p className="text-xs leading-relaxed text-emerald-800">
+                      {message.corrected}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => speakText(message.corrected)}
+                      className="grid h-5 w-5 shrink-0 place-items-center rounded text-emerald-600 transition hover:bg-emerald-100"
+                      title="Listen to the corrected sentence"
+                    >
+                      <Volume2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </motion.div>
     );

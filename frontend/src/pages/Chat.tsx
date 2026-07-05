@@ -1,18 +1,41 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { MessageSquarePlus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { postChatReply } from "../api";
 import ChatInput from "../components/chat/ChatInput";
 import MessageBubble from "../components/chat/MessageBubble";
 import SpeechControls from "../components/chat/SpeechControls";
 import WordLookupModal from "../components/chat/WordLookupModal";
 import { useSpeechPlayback } from "../hooks/useSpeechPlayback";
-import { postChatReply } from "../api";
 
-const INITIAL_SUGGESTIONS = [
-  "Can we practice a mock interview?",
-  "Explain this sentence with easier words.",
-  "Help me answer like a software developer.",
-];
+// The conversation is kept in the browser so it survives moving between
+// pages (and a refresh). "New Chat" clears it — nothing is stored server-side.
+const CHAT_STORAGE_KEY = "sophia-chat-messages";
+// Whether the Vietnamese translation is shown. A preference, so it persists
+// across pages/refresh and is NOT reset by "New Chat".
+const TRANSLATION_STORAGE_KEY = "sophia-show-translation";
+// Speech playback speed — also a persisted preference.
+const SPEECH_RATE_STORAGE_KEY = "sophia-speech-rate";
+const DEFAULT_SPEECH_RATE = 1;
+
+function loadShowTranslation(): boolean {
+  try {
+    const raw = localStorage.getItem(TRANSLATION_STORAGE_KEY);
+    return raw === null ? true : raw === "true";
+  } catch {
+    return true;
+  }
+}
+
+function loadSpeechRate(): number {
+  try {
+    const raw = localStorage.getItem(SPEECH_RATE_STORAGE_KEY);
+    const value = raw === null ? NaN : Number(raw);
+    return Number.isFinite(value) ? value : DEFAULT_SPEECH_RATE;
+  } catch {
+    return DEFAULT_SPEECH_RATE;
+  }
+}
 
 const createMessage = (role: string, content: string, extra: any = {}) => ({
   id: crypto.randomUUID(),
@@ -22,6 +45,28 @@ const createMessage = (role: string, content: string, extra: any = {}) => ({
   ...extra,
 });
 
+const makeGreeting = () => [
+  createMessage(
+    "assistant",
+    "Hi! I am your English speaking coach. Tell me about your current project.",
+    {
+      vietnamese:
+        "Xin chào! Tôi là huấn luyện viên nói tiếng Anh của bạn. Hãy cho tôi biết về dự án hiện tại của bạn.",
+    },
+  ),
+];
+
+function loadInitialMessages(): any[] {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return makeGreeting();
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : makeGreeting();
+  } catch {
+    return makeGreeting();
+  }
+}
+
 function getLastAssistantEnglishText(messages: any[]) {
   const last = [...messages].reverse().find((m) => m.role === "assistant");
   return last?.english || last?.content || "";
@@ -29,8 +74,8 @@ function getLastAssistantEnglishText(messages: any[]) {
 
 export default function Chat() {
   const [isResponding, setIsResponding] = useState(false);
-  const [showTranslation, setShowTranslation] = useState(true);
-  const [speechRate, setSpeechRate] = useState(0.75);
+  const [showTranslation, setShowTranslation] = useState(loadShowTranslation);
+  const [speechRate, setSpeechRate] = useState(loadSpeechRate);
   // Session id resets on "new chat"; the setter is what matters here.
   const [, setSessionId] = useState(() => crypto.randomUUID());
   const [wordModal, setWordModal] = useState({
@@ -38,16 +83,7 @@ export default function Chat() {
     word: "",
     context: "",
   });
-  const [messages, setMessages] = useState<any[]>([
-    createMessage(
-      "assistant",
-      "Hi! I am your English speaking coach. Tell me about your current project.",
-      {
-        vietnamese:
-          "Xin chào! Tôi là huấn luyện viên nói tiếng Anh của bạn. Hãy cho tôi biết về dự án hiện tại của bạn.",
-      },
-    ),
-  ]);
+  const [messages, setMessages] = useState<any[]>(loadInitialMessages);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const speech = useSpeechPlayback();
 
@@ -59,21 +95,47 @@ export default function Chat() {
     });
   };
 
-  const suggestions = useMemo(() => {
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    return lastAssistant?.suggestions ?? INITIAL_SUGGESTIONS;
-  }, [messages]);
-
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isResponding]);
 
+  // Persist the conversation so it survives navigating away and refresh.
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+    } catch {
+      // Ignore storage errors (e.g. quota / private mode).
+    }
+  }, [messages]);
+
+  // Remember the translation toggle across pages/refresh.
+  useEffect(() => {
+    try {
+      localStorage.setItem(TRANSLATION_STORAGE_KEY, String(showTranslation));
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [showTranslation]);
+
+  // Remember the speech-speed setting across pages/refresh.
+  useEffect(() => {
+    try {
+      localStorage.setItem(SPEECH_RATE_STORAGE_KEY, String(speechRate));
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [speechRate]);
+
   const startNewChat = () => {
     setSessionId(crypto.randomUUID());
+    // Wipe the saved conversation — a new chat starts clean and is not kept.
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors.
+    }
     setMessages([
       createMessage(
         "assistant",
@@ -105,14 +167,23 @@ export default function Chat() {
         history,
       });
 
-      setMessages((prev) => [
-        ...prev,
-        createMessage("assistant", reply.english, {
-          vietnamese: reply.vietnamese,
-          analysis: reply.analysis,
-          suggestions: reply.suggestions,
-        }),
-      ]);
+      setMessages((prev) => {
+        // Attach the coach's corrected version to the message the learner
+        // just sent, then append the coach's reply.
+        const withCorrection = prev.map((msg) =>
+          msg.id === userMessage.id
+            ? { ...msg, corrected: reply.corrected }
+            : msg,
+        );
+        return [
+          ...withCorrection,
+          createMessage("assistant", reply.english, {
+            vietnamese: reply.vietnamese,
+            analysis: reply.analysis,
+            suggestions: reply.suggestions,
+          }),
+        ];
+      });
     } catch (error) {
       console.error(error);
       setMessages((prev) => [
@@ -184,26 +255,8 @@ export default function Chat() {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {suggestions.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            onClick={() => sendMessage(suggestion)}
-            disabled={isResponding}
-            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-600 transition hover:border-blue-300 hover:text-blue-700 disabled:opacity-50"
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
-
       <div className="shrink-0 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-        <ChatInput
-          onSend={sendMessage}
-          isLoading={isResponding}
-          suggestions={suggestions}
-        />
+        <ChatInput onSend={sendMessage} isLoading={isResponding} />
       </div>
 
       <WordLookupModal

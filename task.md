@@ -1,0 +1,8 @@
+- font chữ
+- màu system
+- ngay chỗ /vocabulary, cái status nên desgin như 1 thanh ngang status
+- Design toast mỗi lần alert
+- animation project
+- feature change voice: as male, female, ...
+- Add chatbot for it understand each level english as: A1, B1, B2
+- text 'Coach is typing...' at consersation, add animation for it as '...' sẽ nhấp nháy
