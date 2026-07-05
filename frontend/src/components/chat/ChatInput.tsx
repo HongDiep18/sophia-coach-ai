@@ -1,11 +1,10 @@
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Sparkles } from "lucide-react";
+import { Mic, MicOff, Send } from "lucide-react";
 
 type ChatInputProps = {
   onSend: (text: string) => void;
   isLoading: boolean;
-  suggestions?: string[];
 };
 
 type SpeechRecognitionEventLike = {
@@ -36,11 +35,7 @@ const getSpeechRecognition = (): SpeechRecognitionCtor | null => {
 
 const isSpeechRecognitionSupported = () => Boolean(getSpeechRecognition());
 
-export default function ChatInput({
-  onSend,
-  isLoading,
-  suggestions,
-}: ChatInputProps) {
+export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
   const [text, setText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -88,23 +83,6 @@ export default function ChatInput({
 
   return (
     <div className="space-y-3">
-      {suggestions?.length ? (
-        <div className="flex flex-wrap gap-2">
-          {suggestions.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => sendText(suggestion)}
-              disabled={isLoading}
-              className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-600 transition hover:border-blue-400 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Sparkles className="mr-1 inline h-3 w-3" />
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       <div className="flex items-center gap-2">
         <button
           type="button"
