@@ -1,5 +1,5 @@
-import { apiRequest } from "./client";
-import type { ChatbotRequest, ChatbotResponse } from "./types";
+import { apiRequest } from "../client";
+import type { ChatbotRequest, ChatbotResponse } from "./chatbot.types";
 
 // Talks to the RAG help bot (POST /api/chatbot), which answers questions
 // about the app using the knowledge base. Separate from the English coach.

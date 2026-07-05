@@ -1,11 +1,11 @@
-import { apiRequest } from "./client";
+import { apiRequest } from "../client";
 import type {
   ListVocabResponse,
   LearningStatus,
   SaveVocabRequest,
   SaveVocabResponse,
   VocabItem,
-} from "./types";
+} from "./vocab.types";
 
 export function getVocab() {
   return apiRequest<ListVocabResponse>("/api/vocab");
