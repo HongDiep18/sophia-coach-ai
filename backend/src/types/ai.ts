@@ -13,6 +13,14 @@ export type ChatReply = {
   suggestions: string[];
 };
 
+export type VoiceCoaching = {
+  /** Learner's latest message rewritten correctly. Equals the original when it
+   *  was already fine. */
+  corrected: string;
+  /** Up to 3 example answers the learner could say next, first person. */
+  hints: string[];
+};
+
 export type WordLookupReply = {
   definition: string;
   vietnamese: string;
