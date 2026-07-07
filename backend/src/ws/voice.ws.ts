@@ -1,7 +1,8 @@
 import type { IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { z } from "zod";
-import { streamChatEnglishReply } from "../services/chat.service.js";
+import { streamVoiceReply } from "../services/voice.service.js";
+import { AppError } from "../lib/errors.js";
 
 const clientMessageSchema = z.object({
   type: z.enum(["client.interim", "client.final"]),
@@ -55,7 +56,7 @@ export function attachVoiceWsServer(server: any) {
       socket.send(JSON.stringify({ type: "assistant.start" }));
 
       try {
-        for await (const delta of streamChatEnglishReply({
+        for await (const delta of streamVoiceReply({
           message: finalText,
           level: parsed.level || "B1",
           history: parsed.history ?? [],
@@ -64,10 +65,15 @@ export function attachVoiceWsServer(server: any) {
         }
         socket.send(JSON.stringify({ type: "assistant.done" }));
       } catch (e: any) {
+        // Forward the structured error so the client can tell a hard quota cap
+        // apart from a transient glitch and show the right message + retry.
+        const appError = e instanceof AppError ? e : null;
         socket.send(
           JSON.stringify({
             type: "server.error",
+            code: appError?.code ?? "STREAM_FAILED",
             message: e?.message || "Streaming failed",
+            retryAfterMs: appError?.retryAfterMs,
           }),
         );
       }

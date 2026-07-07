@@ -1,5 +1,17 @@
+import {
+  Ear,
+  Loader2,
+  Mic,
+  MicOff,
+  Pause,
+  Play,
+  PlugZap,
+  RefreshCw,
+  Send,
+  Square,
+  Volume2,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Mic, MicOff, PlugZap, Send, Volume2 } from "lucide-react";
 import { useSpeechPlayback } from "../hooks/useSpeechPlayback";
 
 function getSpeechRecognition() {
@@ -19,6 +31,28 @@ function getWsBaseUrl() {
     : httpBase.replace(/^http:\/\//, "ws://");
 }
 
+// Turn a backend error code (or raw message) into a short, friendly line the
+// learner can act on.
+function friendlyError(code?: string, message?: string) {
+  switch (code) {
+    case "QUOTA_EXHAUSTED":
+      return "Sophia has reached today's free AI limit. Please try again later.";
+    case "STREAM_FAILED":
+      return "The coach hit a problem while replying. Please try again.";
+    default:
+      return message || "Something went wrong. Please try again.";
+  }
+}
+
+// Guard against empty / stray-noise transcripts (a stray "uh", a single
+// character, pure punctuation) so we don't send junk to the coach.
+function isMeaningfulUtterance(text: string) {
+  const t = text.trim();
+  if (t.length < 2) return false;
+  if (!/[a-zA-Z0-9]/.test(t)) return false;
+  return true;
+}
+
 function extractFullSentences(buffer: string) {
   const parts = buffer.split(/(?<=[.!?])\s+/);
   if (parts.length <= 1) return { sentences: [], rest: buffer };
@@ -34,10 +68,24 @@ export default function VoiceAssistant() {
   const autoSendRef = useRef({ armed: false, sent: false, lastText: "" });
   const finalAccumRef = useRef("");
 
-  const [level, setLevel] = useState("B1");
+  // Refs mirror the latest state so callbacks created once (mic handlers, the
+  // WS message listener) never read stale values from an old render.
+  const isThinkingRef = useRef(false);
+  const levelRef = useRef("B1");
+  const historyRef = useRef<Array<{ role: string; content: string }>>([]);
+  // The last message we tried to send, so the Retry button can resend it.
+  const lastMessageRef = useRef("");
+
+  // Level is fixed at B1 while the selector UI is disabled; kept so the prompt
+  // and WS messages still carry a level.
+  const [level] = useState("B1");
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState("");
+  const [canRetry, setCanRetry] = useState(false);
+  // Gentle, non-alarming notice (e.g. "I didn't catch that"), styled softer
+  // than the red error banner.
+  const [hint, setHint] = useState("");
   const [wsStatus, setWsStatus] = useState("disconnected");
 
   const [transcript, setTranscript] = useState("");
@@ -47,6 +95,16 @@ export default function VoiceAssistant() {
   const [history, setHistory] = useState<
     Array<{ role: string; content: string }>
   >([]);
+
+  useEffect(() => {
+    isThinkingRef.current = isThinking;
+  }, [isThinking]);
+  useEffect(() => {
+    levelRef.current = level;
+  }, [level]);
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
 
   useEffect(() => {
     return () => {
@@ -66,8 +124,10 @@ export default function VoiceAssistant() {
   const canListen = Boolean(Recognition);
 
   const startListening = () => {
-    if (!canListen || isThinking) return;
+    if (!canListen || isThinkingRef.current) return;
     setError("");
+    setCanRetry(false);
+    setHint("");
     setTranscript("");
     setFinalTranscript("");
     setAssistantLive("");
@@ -104,8 +164,8 @@ export default function VoiceAssistant() {
             JSON.stringify({
               type: "client.interim",
               text: interim.trim(),
-              level,
-              history: history.slice(-10),
+              level: levelRef.current,
+              history: historyRef.current.slice(-10),
             }),
           );
         }
@@ -122,9 +182,16 @@ export default function VoiceAssistant() {
     rec.onend = () => {
       setIsListening(false);
       const shouldAutoSend =
-        autoSendRef.current.armed && !autoSendRef.current.sent && !isThinking;
+        autoSendRef.current.armed &&
+        !autoSendRef.current.sent &&
+        !isThinkingRef.current;
       const text = (autoSendRef.current.lastText || "").trim();
-      if (shouldAutoSend && text) {
+      if (shouldAutoSend) {
+        if (!isMeaningfulUtterance(text)) {
+          // Nothing usable was captured — nudge instead of sending noise.
+          setHint("I didn't catch that. Tap the mic and try again.");
+          return;
+        }
         autoSendRef.current.sent = true;
         // Fire-and-forget; errors are handled inside sendText.
         void sendText(text);
@@ -156,7 +223,12 @@ export default function VoiceAssistant() {
     setWsStatus("connecting");
 
     ws.onopen = () => setWsStatus("connected");
-    ws.onclose = () => setWsStatus("disconnected");
+    ws.onclose = () => {
+      setWsStatus("disconnected");
+      // Drop the reference so the next send opens a fresh socket instead of
+      // reusing a closed/half-open one.
+      if (wsRef.current === ws) wsRef.current = null;
+    };
     ws.onerror = () => setWsStatus("error");
 
     return ws;
@@ -164,22 +236,58 @@ export default function VoiceAssistant() {
 
   const sendText = async (text: string) => {
     const message = text.trim();
-    if (!message || isThinking) return;
+    if (!message || isThinkingRef.current) return;
+    isThinkingRef.current = true;
+    lastMessageRef.current = message;
     setIsThinking(true);
     setError("");
+    setCanRetry(false);
+    setHint("");
     setAssistantLive("");
+
+    let settled = false;
+    let responseTimer: ReturnType<typeof setTimeout> | null = null;
+    let activeWs: WebSocket | null = null;
+    let handleMessage: ((event: MessageEvent) => void) | null = null;
+    let handleClose: (() => void) | null = null;
+
+    // Single place that tears everything down, so the message listener, the
+    // close listener, and the timeout can never leak, no matter which path
+    // ends the request.
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (responseTimer) clearTimeout(responseTimer);
+      if (activeWs && handleMessage) {
+        activeWs.removeEventListener("message", handleMessage);
+      }
+      if (activeWs && handleClose) {
+        activeWs.removeEventListener("close", handleClose);
+      }
+      isThinkingRef.current = false;
+      setIsThinking(false);
+    };
+
+    // Any failure ends the turn AND offers a retry of the same message.
+    const fail = (friendly: string) => {
+      if (settled) return;
+      setError(friendly);
+      setCanRetry(true);
+      finish();
+    };
 
     try {
       const ws =
         wsRef.current && wsRef.current.readyState === WebSocket.OPEN
           ? wsRef.current
           : connectWs();
+      activeWs = ws;
 
-      const fullHistory = history.slice(-10);
+      const fullHistory = historyRef.current.slice(-10);
       let liveBuffer = "";
       let fullText = "";
 
-      const handleMessage = (event: MessageEvent) => {
+      handleMessage = (event: MessageEvent) => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === "assistant.delta" && msg.text) {
@@ -196,27 +304,33 @@ export default function VoiceAssistant() {
 
           if (msg.type === "assistant.done") {
             const merged = fullText.trim();
-            setAssistantText(merged);
-            setHistory((prev) => [
-              ...prev,
-              { role: "user", content: message },
-              { role: "assistant", content: merged },
-            ]);
-            ws.removeEventListener("message", handleMessage);
-            setIsThinking(false);
+            if (merged) {
+              setAssistantText(merged);
+              setHistory((prev) => [
+                ...prev,
+                { role: "user", content: message },
+                { role: "assistant", content: merged },
+              ]);
+            }
+            finish();
           }
 
           if (msg.type === "server.error") {
-            setError(msg.message || "Streaming error");
-            ws.removeEventListener("message", handleMessage);
-            setIsThinking(false);
+            fail(friendlyError(msg.code, msg.message));
           }
         } catch {
-          // ignore
+          // ignore malformed frames
         }
       };
 
+      // If the socket drops mid-reply (network blip, backend restart), don't
+      // hang until the 30s timeout — surface it right away with a retry.
+      handleClose = () => {
+        fail("Connection lost while the coach was replying. Please try again.");
+      };
+
       ws.addEventListener("message", handleMessage);
+      ws.addEventListener("close", handleClose);
 
       if (ws.readyState !== WebSocket.OPEN) {
         await new Promise<void>((resolve, reject) => {
@@ -229,32 +343,88 @@ export default function VoiceAssistant() {
             },
             { once: true },
           );
+          ws.addEventListener(
+            "error",
+            () => {
+              clearTimeout(t);
+              reject(new Error("WS error"));
+            },
+            { once: true },
+          );
         });
       }
+
+      // Safety net: if the backend never sends done/error, stop waiting instead
+      // of leaving the UI stuck on "Thinking…".
+      responseTimer = setTimeout(() => {
+        fail("The coach took too long to respond. Please try again.");
+      }, 30000);
 
       ws.send(
         JSON.stringify({
           type: "client.final",
           text: message,
-          level,
+          level: levelRef.current,
           history: fullHistory,
         }),
       );
     } catch {
-      setError(
-        "Could not start live stream. Please start backend and refresh the page.",
+      fail(
+        "Could not reach the coach. Please check the backend is running and try again.",
       );
-      setIsThinking(false);
     }
   };
 
   const sendFromVoice = async () => {
+    if (isThinkingRef.current) return;
     const message = (finalTranscript || transcript || "").trim();
+    if (!isMeaningfulUtterance(message)) {
+      setHint("I didn't catch that. Tap the mic and try again.");
+      return;
+    }
     autoSendRef.current.sent = true;
     await sendText(message);
   };
 
   const currentCaptured = (finalTranscript || transcript || "").trim();
+
+  // One clear phase for the whole flow, so the learner always knows what's
+  // happening: Listening → Thinking → Speaking → Ready.
+  const isSpeaking = speech.state !== "idle";
+  const phase = isListening
+    ? "listening"
+    : isThinking
+      ? "thinking"
+      : isSpeaking
+        ? "speaking"
+        : "ready";
+  const phaseMeta = {
+    ready: {
+      label: "Ready",
+      icon: Mic,
+      className: "border-slate-200 bg-slate-50 text-slate-500",
+      spin: false,
+    },
+    listening: {
+      label: "Listening…",
+      icon: Ear,
+      className: "border-blue-200 bg-blue-50 text-blue-700",
+      spin: false,
+    },
+    thinking: {
+      label: "Thinking…",
+      icon: Loader2,
+      className: "border-amber-200 bg-amber-50 text-amber-700",
+      spin: true,
+    },
+    speaking: {
+      label: "Speaking…",
+      icon: Volume2,
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      spin: false,
+    },
+  }[phase];
+  const PhaseIcon = phaseMeta.icon;
 
   return (
     <section className="mx-auto flex h-full w-full max-w-3xl flex-col gap-4">
@@ -276,26 +446,37 @@ export default function VoiceAssistant() {
       ) : null}
 
       {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span>{error}</span>
+          {canRetry && lastMessageRef.current ? (
+            <button
+              type="button"
+              onClick={() => void sendText(lastMessageRef.current)}
+              disabled={isThinking}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hint && !error ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          {hint}
         </div>
       ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-500">Level</label>
-            <select
-              value={level}
-              onChange={(e) => setLevel(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
-              disabled={isThinking || isListening}
-            >
-              <option value="A2">A2</option>
-              <option value="B1">B1</option>
-              <option value="B2">B2</option>
-              <option value="C1">C1</option>
-            </select>
+          <div
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${phaseMeta.className}`}
+          >
+            <PhaseIcon
+              className={`h-3.5 w-3.5 ${phaseMeta.spin ? "animate-spin" : ""}`}
+            />
+            {phaseMeta.label}
           </div>
 
           <div className="flex items-center gap-2">
@@ -401,10 +582,36 @@ export default function VoiceAssistant() {
                 </span>
               )}
             </div>
-            {speech.state !== "idle" ? (
-              <p className="mt-1 text-[11px] text-slate-400">
-                Use Stop/Pause/Resume in the header or in Chat controls.
-              </p>
+            {isSpeaking ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={speech.stop}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Square className="h-3.5 w-3.5" />
+                  Stop
+                </button>
+                {speech.state === "paused" ? (
+                  <button
+                    type="button"
+                    onClick={speech.resume}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                    Resume
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={speech.pause}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Pause className="h-3.5 w-3.5" />
+                    Pause
+                  </button>
+                )}
+              </div>
             ) : null}
           </div>
         </div>
