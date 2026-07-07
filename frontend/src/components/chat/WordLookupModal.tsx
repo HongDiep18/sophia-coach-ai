@@ -5,6 +5,7 @@ import {
   stopSpeechPlayback,
 } from "../../lib/speechPlayback";
 import { postWordLookup, saveVocab } from "../../api";
+import { useToast } from "../ui/toast";
 
 const IPA_LABELS = ["UK-style", "US-style"];
 
@@ -20,6 +21,7 @@ export default function WordLookupModal({
   const [saved, setSaved] = useState(false);
   // "created" (new word stored) or "already_exists" (was saved before).
   const [saveStatus, setSaveStatus] = useState(null);
+  const toast = useToast();
 
   const runLookup = useCallback(async () => {
     if (!word?.trim()) return;
@@ -33,6 +35,10 @@ export default function WordLookupModal({
       setDefinition(result);
     } catch (error) {
       console.error(error);
+      toast.error("Lookup failed", {
+        description: "Could not reach the definition service.",
+        action: { label: "Retry", onClick: () => runLookup() },
+      });
       setDefinition({
         definition: "Failed to fetch definition from backend service.",
         vietnamese: "Không thể lấy nghĩa từ backend.",
@@ -73,8 +79,17 @@ export default function WordLookupModal({
       });
       setSaved(true);
       setSaveStatus(result.status);
+      if (result.status === "already_exists") {
+        toast.info(`"${word.trim()}" is already in your vocab`);
+      } else {
+        toast.success(`Saved "${word.trim()}" to vocab`);
+      }
     } catch (error) {
       console.error(error);
+      toast.error("Could not save word", {
+        description: "Please try again in a moment.",
+        action: { label: "Retry", onClick: () => saveWord() },
+      });
     } finally {
       setSaving(false);
     }

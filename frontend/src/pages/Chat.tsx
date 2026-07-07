@@ -2,11 +2,17 @@ import { AnimatePresence } from "framer-motion";
 import { MessageSquarePlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { postChatReply } from "../api";
+import { ApiError } from "../api/client";
 import ChatInput from "../components/chat/ChatInput";
 import MessageBubble from "../components/chat/MessageBubble";
 import SpeechControls from "../components/chat/SpeechControls";
 import WordLookupModal from "../components/chat/WordLookupModal";
+import { useToast } from "../components/ui/toast";
 import { useSpeechPlayback } from "../hooks/useSpeechPlayback";
+
+// Gemini's rate-limits reference — surfaced as the toast action on quota errors.
+const RATE_LIMIT_HELP_URL =
+  "https://ai.google.dev/gemini-api/docs/rate-limits";
 
 // The conversation is kept in the browser so it survives moving between
 // pages (and a refresh). "New Chat" clears it — nothing is stored server-side.
@@ -86,6 +92,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<any[]>(loadInitialMessages);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const speech = useSpeechPlayback();
+  const toast = useToast();
 
   const handleWordClick = (cleanWord: string) => {
     setWordModal({
@@ -186,19 +193,53 @@ export default function Chat() {
       });
     } catch (error) {
       console.error(error);
-      setMessages((prev) => [
-        ...prev,
-        createMessage(
-          "assistant",
-          "I could not reach the AI service. Please check backend and try again.",
-          {
-            vietnamese:
-              "Khong the ket noi AI. Hay kiem tra backend va thu lai.",
-            analysis: "Check backend env and server status.",
-            suggestions: ["Try again", "Restart backend", "Check API key"],
+
+      const quotaHit =
+        error instanceof ApiError &&
+        (error.status === 429 || error.code === "QUOTA_EXHAUSTED");
+
+      if (quotaHit) {
+        // Not a backend outage — the Gemini free tier's daily cap was reached.
+        toast.warning("Daily AI limit reached", {
+          description:
+            "The Gemini free tier allows a limited number of requests per day. Try again later.",
+          duration: 8000,
+          action: {
+            label: "Learn more",
+            onClick: () => window.open(RATE_LIMIT_HELP_URL, "_blank"),
           },
-        ),
-      ]);
+        });
+        setMessages((prev) => [
+          ...prev,
+          createMessage(
+            "assistant",
+            "I've hit today's AI usage limit (Gemini free tier). This isn't a backend problem — please try again later.",
+            {
+              vietnamese:
+                "Da het luot AI trong ngay (Gemini free tier). Khong phai loi backend — hay thu lai sau.",
+              analysis: "Gemini free-tier daily quota exhausted.",
+              suggestions: ["Try again later", "Check your Gemini plan"],
+            },
+          ),
+        ]);
+      } else {
+        toast.error("Could not reach the AI service", {
+          description: "Please check the backend and try again.",
+        });
+        setMessages((prev) => [
+          ...prev,
+          createMessage(
+            "assistant",
+            "I could not reach the AI service. Please check backend and try again.",
+            {
+              vietnamese:
+                "Khong the ket noi AI. Hay kiem tra backend va thu lai.",
+              analysis: "Check backend env and server status.",
+              suggestions: ["Try again", "Restart backend", "Check API key"],
+            },
+          ),
+        ]);
+      }
     } finally {
       setIsResponding(false);
     }

@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { QuotaExhaustedError } from "../lib/errors.js";
 
 type GeminiPart = { text: string };
 type GeminiResponse = {
@@ -55,6 +56,15 @@ function isHardQuotaExceeded(errorText: string): boolean {
     t.includes("quota exceeded") &&
     (t.includes("limit: 0") || t.includes("free_tier"))
   );
+}
+
+/**
+ * Build the quota error to throw. The raw Gemini JSON blob is logged here for
+ * diagnostics but never returned to the client — only the distilled 429 is.
+ */
+function quotaError(errorText: string): QuotaExhaustedError {
+  console.error("[gemini] hard quota exceeded:", errorText);
+  return new QuotaExhaustedError(parseRetryDelayMs(errorText) ?? undefined);
 }
 
 function parseRetryDelayMs(errorText: string): number | null {
@@ -114,7 +124,7 @@ export async function embedText(
       if (!response.ok) {
         const errorText = await response.text();
         if (isHardQuotaExceeded(errorText)) {
-          throw new Error(`Gemini quota exhausted (hard limit). ${errorText}`);
+          throw quotaError(errorText);
         }
         const err = new Error(
           `Gemini embedding error (${model}): ${response.status} ${errorText}`,
@@ -183,7 +193,7 @@ export async function generateStructuredJson<T>(prompt: string): Promise<T> {
       if (!response.ok) {
         const errorText = await response.text();
         if (isHardQuotaExceeded(errorText)) {
-          throw new Error(`Gemini quota exhausted (hard limit). ${errorText}`);
+          throw quotaError(errorText);
         }
         const err = new Error(
           `Gemini error (${model}): ${response.status} ${errorText}`,
@@ -242,7 +252,7 @@ export async function* generateTextStream(
       if (!response.ok || !response.body) {
         const errorText = await response.text().catch(() => "");
         if (isHardQuotaExceeded(errorText)) {
-          throw new Error(`Gemini quota exhausted (hard limit). ${errorText}`);
+          throw quotaError(errorText);
         }
         const err = new Error(
           `Gemini stream error (${model}): ${response.status} ${errorText}`,
