@@ -92,6 +92,14 @@ export default function VoiceAssistant() {
   const [finalTranscript, setFinalTranscript] = useState("");
   const [assistantText, setAssistantText] = useState("");
   const [assistantLive, setAssistantLive] = useState("");
+  // On-screen "learning card": corrected sentence (shown only when it changed)
+  // + a next-line hint (always shown). Arrives right before assistant.done.
+  const [coaching, setCoaching] = useState<{
+    original: string;
+    corrected: string;
+    hints: string[];
+    changed: boolean;
+  } | null>(null);
   const [history, setHistory] = useState<
     Array<{ role: string; content: string }>
   >([]);
@@ -131,6 +139,7 @@ export default function VoiceAssistant() {
     setTranscript("");
     setFinalTranscript("");
     setAssistantLive("");
+    setCoaching(null);
     autoSendRef.current = { armed: true, sent: false, lastText: "" };
     finalAccumRef.current = "";
 
@@ -244,6 +253,7 @@ export default function VoiceAssistant() {
     setCanRetry(false);
     setHint("");
     setAssistantLive("");
+    setCoaching(null);
 
     let settled = false;
     let responseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -300,6 +310,15 @@ export default function VoiceAssistant() {
               speech.enqueue(sentence, 0.75, "en-US");
             }
             liveBuffer = extracted.rest;
+          }
+
+          if (msg.type === "assistant.coaching") {
+            setCoaching({
+              original: msg.original ?? "",
+              corrected: msg.corrected ?? "",
+              hints: Array.isArray(msg.hints) ? msg.hints : [],
+              changed: Boolean(msg.changed),
+            });
           }
 
           if (msg.type === "assistant.done") {
@@ -611,6 +630,34 @@ export default function VoiceAssistant() {
                     Pause
                   </button>
                 )}
+              </div>
+            ) : null}
+
+            {coaching ? (
+              <div className="mt-3 space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                {coaching.changed ? (
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="text-slate-400 line-through">
+                      {coaching.original}
+                    </span>
+                    <span className="text-slate-400">→</span>
+                    <span className="font-medium text-emerald-700">
+                      {coaching.corrected}
+                    </span>
+                  </p>
+                ) : null}
+                {coaching.hints.length > 0 ? (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-slate-500">
+                      💡 Try saying next:
+                    </p>
+                    {coaching.hints.map((h, i) => (
+                      <p key={i} className="text-slate-600">
+                        {i + 1}. {h}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
