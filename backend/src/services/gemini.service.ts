@@ -14,6 +14,28 @@ function extractTextDelta(data: GeminiResponse): string {
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
+/**
+ * Parse one SSE frame (which may contain several `data:` lines) and yield any
+ * text deltas. Line endings are normalized because Gemini separates frames
+ * with CRLF (`\r\n\r\n`), not `\n\n`.
+ */
+function* emitSseFrame(frame: string): Generator<string, void, void> {
+  const lines = frame.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice("data:".length).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const json = JSON.parse(payload) as GeminiResponse;
+      const delta = extractTextDelta(json);
+      if (delta) yield delta;
+    } catch {
+      // ignore invalid JSON frames
+    }
+  }
+}
+
 function extractJsonObject(raw: string) {
   const trimmed = raw.trim();
   const withoutFence = trimmed
@@ -229,82 +251,99 @@ export async function* generateTextStream(
   prompt: string,
 ): AsyncGenerator<string, void, void> {
   const models = getModelCandidates();
+  // A 503 "high demand" on Gemini is usually transient, so retry the SAME
+  // model a few times with backoff before falling back to the next model.
+  const maxAttemptsPerModel = 3;
   let lastError: Error | null = null;
 
   for (let i = 0; i < models.length; i += 1) {
     const model = models[i];
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${env.GEMINI_API_KEY}`;
+    let advanceToNextModel = false;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    for (
+      let attempt = 0;
+      attempt < maxAttemptsPerModel && !advanceToNextModel;
+      attempt += 1
+    ) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      let started = false;
 
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.5 },
-        }),
-      });
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.5 },
+          }),
+        });
 
-      if (!response.ok || !response.body) {
-        const errorText = await response.text().catch(() => "");
-        if (isHardQuotaExceeded(errorText)) {
-          throw quotaError(errorText);
-        }
-        const err = new Error(
-          `Gemini stream error (${model}): ${response.status} ${errorText}`,
-        );
-        const shouldRetry =
-          i < models.length - 1 &&
-          isRetryableModelBusy(response.status, errorText);
-        if (shouldRetry) {
-          const delay = parseRetryDelayMs(errorText) ?? 600;
-          await sleep(delay);
-          lastError = err;
+        if (!response.ok || !response.body) {
+          const errorText = await response.text().catch(() => "");
+          if (isHardQuotaExceeded(errorText)) {
+            throw quotaError(errorText);
+          }
+          lastError = new Error(
+            `Gemini stream error (${model}): ${response.status} ${errorText}`,
+          );
+
+          if (isRetryableModelBusy(response.status, errorText)) {
+            // Overloaded: retry the same model, then fall back.
+            if (attempt < maxAttemptsPerModel - 1) {
+              await sleep(parseRetryDelayMs(errorText) ?? 700 * (attempt + 1));
+              continue;
+            }
+            advanceToNextModel = true;
+            continue;
+          }
+
+          // Non-retryable HTTP error: fall back to the next model, if any.
+          advanceToNextModel = true;
           continue;
         }
-        throw err;
-      }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+        // Success — stream to completion.
+        started = true;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        // SSE frames are separated by blank lines.
-        const frames = buffer.split("\n\n");
-        buffer = frames.pop() ?? "";
-
-        for (const frame of frames) {
-          const lines = frame.split("\n");
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith("data:")) continue;
-            const payload = trimmed.slice("data:".length).trim();
-            if (!payload || payload === "[DONE]") continue;
-            try {
-              const json = JSON.parse(payload) as GeminiResponse;
-              const delta = extractTextDelta(json);
-              if (delta) yield delta;
-            } catch {
-              // ignore invalid JSON frames
-            }
+          // SSE frames are separated by a blank line. Gemini uses CRLF, so
+          // split on either \r\n\r\n or \n\n.
+          const frames = buffer.split(/\r?\n\r?\n/);
+          buffer = frames.pop() ?? "";
+          for (const frame of frames) {
+            yield* emitSseFrame(frame);
           }
         }
+        // Flush any trailing frame that wasn't terminated by a blank line.
+        if (buffer.trim()) {
+          yield* emitSseFrame(buffer);
+        }
+        return;
+      } catch (error) {
+        // A hard quota cap will keep failing — surface it immediately.
+        if (error instanceof QuotaExhaustedError) throw error;
+        // Failed after we already started yielding: don't silently swallow.
+        if (started) throw error;
+
+        lastError = error as Error;
+        if (attempt < maxAttemptsPerModel - 1) {
+          await sleep(700 * (attempt + 1));
+          continue;
+        }
+        advanceToNextModel = true;
+      } finally {
+        clearTimeout(timeout);
       }
-      return;
-    } catch (error) {
-      lastError = error as Error;
-      if (i === models.length - 1) throw error;
-    } finally {
-      clearTimeout(timeout);
     }
   }
 
@@ -312,3 +351,4 @@ export async function* generateTextStream(
     lastError ?? new Error("Gemini stream failed for all configured models")
   );
 }
+
