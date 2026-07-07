@@ -59,3 +59,44 @@ Latest user message:
 ${input.message}
 `.trim();
 }
+
+/**
+ * Small side-prompt for the voice "learning card": returns ONLY a corrected
+ * version of the learner's latest sentence and one next-line hint. It sees
+ * Sophia's spoken reply (which ends with a follow-up question) so the hint can
+ * be an example ANSWER to that question, not a repeat of the question. Never
+ * read aloud, so it stays compact structured JSON rather than natural speech.
+ */
+export function buildVoiceCoachingPrompt(
+  input: VoicePromptInput & { reply: string },
+): string {
+  const historyText = formatHistory(input.history);
+
+  return `
+You are "Sophia", an English coach helping a Vietnamese learner keep talking.
+Return STRICT JSON with exactly two keys: corrected, hints.
+- corrected: rewrite the LEARNER'S latest message in natural, correct English,
+  fixing ONLY grammar, word choice, and phrasing. This is a SPOKEN transcript,
+  so do NOT treat missing punctuation or capitalization as a mistake. If the
+  words are already grammatically correct and natural, return it UNCHANGED, word
+  for word (do not add commas, question marks, or capitals just to fix it up).
+- hints: an array of exactly 3 example ANSWERS the LEARNER could say next, each
+  written from the learner's point of view in the FIRST PERSON (e.g.
+  "I think..." / "For me..."). Your spoken reply below ends with a follow-up
+  question to the learner — each hint must be a natural reply to THAT question,
+  so the learner knows how to respond. They are NOT questions back, and NOT a
+  repeat of your question. Offer 3 different ideas so the learner can pick one.
+  Each is one short spoken sentence, no quotes.
+
+Learner's CEFR level: ${input.level}.
+
+Conversation history:
+${historyText || "(empty)"}
+
+Learner's latest message:
+${input.message}
+
+Your spoken reply to the learner (it ends with the question to answer):
+${input.reply}
+`.trim();
+}
