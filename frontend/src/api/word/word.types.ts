@@ -10,3 +10,8 @@ export type WordLookupResponse = {
   part_of_speech: string;
   transliterations: [string, string];
 };
+
+// Lightweight hover gloss: just the short Vietnamese meaning of a word.
+export type WordGlossResponse = {
+  vietnamese: string;
+};

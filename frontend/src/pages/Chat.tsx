@@ -23,6 +23,19 @@ const TRANSLATION_STORAGE_KEY = "sophia-show-translation";
 // Speech playback speed — also a persisted preference.
 const SPEECH_RATE_STORAGE_KEY = "sophia-speech-rate";
 const DEFAULT_SPEECH_RATE = 1;
+// Settings screen preferences (see AppSettings). Read fresh when needed so the
+// latest saved value is used without wiring up a storage listener.
+const SETTINGS_STORAGE_KEY = "sophia-coach-settings";
+
+function loadAutoSpeak(): boolean {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return false;
+    return JSON.parse(raw)?.auto_speak === true;
+  } catch {
+    return false;
+  }
+}
 
 function loadShowTranslation(): boolean {
   try {
@@ -191,6 +204,12 @@ export default function Chat() {
           }),
         ];
       });
+
+      // Read the coach's reply aloud automatically when the learner has
+      // enabled "Auto-speak AI responses" in Settings.
+      if (reply.english && loadAutoSpeak()) {
+        speech.speak(reply.english, speechRate);
+      }
     } catch (error) {
       console.error(error);
 

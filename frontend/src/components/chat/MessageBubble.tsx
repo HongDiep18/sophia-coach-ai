@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen,
@@ -8,19 +7,132 @@ import {
   Sparkles,
   Volume2,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { postWordGloss } from "../../api";
 
-function ClickableWord({ word, onWordClick }) {
+// Per-word Vietnamese meanings are cached across the whole conversation so a
+// second hover on the same word (in the same sentence) is instant and free.
+// Keyed by word + context because meaning is context-dependent.
+const wordMeaningCache = new Map();
+// In-flight gloss requests, keyed the same way, so two hovers on the same word
+// (rapid re-hover, or the same word in two bubbles) share ONE network call
+// instead of each spending tokens.
+const inFlightGloss = new Map();
+// How long the pointer must rest on a word before we fetch — keeps scanning
+// across a sentence from firing a request per word.
+const HOVER_DELAY_MS = 350;
+
+// Resolve a word's short Vietnamese gloss: from cache if we have it, otherwise
+// via a shared in-flight promise. Errors are NOT cached, so a later hover
+// retries. Successful-but-empty replies fall back to a dash.
+function fetchGloss(cacheKey, word, contextSentence) {
+  if (wordMeaningCache.has(cacheKey)) {
+    return Promise.resolve(wordMeaningCache.get(cacheKey));
+  }
+  const existing = inFlightGloss.get(cacheKey);
+  if (existing) return existing;
+
+  const request = postWordGloss({ word, contextSentence: contextSentence || "" })
+    .then((res) => {
+      const meaning = res.vietnamese?.trim() || "—";
+      wordMeaningCache.set(cacheKey, meaning);
+      return meaning;
+    })
+    .finally(() => inFlightGloss.delete(cacheKey));
+
+  inFlightGloss.set(cacheKey, request);
+  return request;
+}
+
+function ClickableWord({ word, onWordClick, contextSentence }) {
   const cleanWord = word.replace(/[.,!?;:'"()]/g, "");
+  // tip: null = hidden; otherwise { loading, vietnamese }.
+  const [tip, setTip] = useState(null);
+  // Viewport coordinates of the word, so the portal tooltip can float above it.
+  const [coords, setCoords] = useState(null);
+  const timerRef = useRef(undefined);
+  const btnRef = useRef(null);
+
+  useEffect(() => () => window.clearTimeout(timerRef.current), []);
+
   if (!cleanWord) return <span>{word} </span>;
+
+  const cacheKey = `${cleanWord.toLowerCase()}|${contextSentence || ""}`;
+
+  // Anchor point: top-center of the word, in viewport (fixed) coordinates.
+  const anchorTooltip = () => {
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (rect) setCoords({ top: rect.top, left: rect.left + rect.width / 2 });
+  };
+
+  const handleEnter = () => {
+    timerRef.current = window.setTimeout(async () => {
+      anchorTooltip();
+      const cached = wordMeaningCache.get(cacheKey);
+      if (cached) {
+        setTip({ loading: false, vietnamese: cached });
+        return;
+      }
+      setTip({ loading: true, vietnamese: null });
+      try {
+        const meaning = await fetchGloss(cacheKey, cleanWord, contextSentence);
+        // Only update if the pointer/focus is still on the word (not cleared).
+        setTip((prev) => (prev ? { loading: false, vietnamese: meaning } : prev));
+      } catch {
+        setTip((prev) =>
+          prev ? { loading: false, vietnamese: "Không dịch được." } : prev,
+        );
+      }
+    }, HOVER_DELAY_MS);
+  };
+
+  const handleLeave = () => {
+    window.clearTimeout(timerRef.current);
+    setTip(null);
+  };
 
   return (
     <button
+      ref={btnRef}
       type="button"
       onClick={() => onWordClick?.(cleanWord, word)}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onFocus={handleEnter}
+      onBlur={handleLeave}
       className="rounded px-0.5 text-left transition hover:bg-blue-100 hover:text-blue-700"
       title={`Click to inspect "${cleanWord}"`}
     >
       {word}
+
+      {/* Rendered into <body> with fixed coords so it floats ABOVE the chat
+          frame and is never clipped by the scroll container's edge, while
+          keeping the same on-screen position (centered just above the word). */}
+      {tip &&
+        coords &&
+        createPortal(
+          <AnimatePresence>
+            <motion.span
+              key="word-gloss"
+              initial={{ opacity: 0, y: 4, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.96 }}
+              transition={{ duration: 0.14 }}
+              style={{ top: coords.top, left: coords.left }}
+              className="pointer-events-none fixed z-[80] flex w-max max-w-[14rem] -translate-x-1/2 -translate-y-[calc(100%+8px)] flex-col gap-0.5 rounded-lg bg-slate-900 px-2.5 py-1.5 text-center shadow-xl ring-1 ring-white/10"
+            >
+              <span className="text-[9px] font-medium uppercase tracking-wide text-slate-400">
+                🇻🇳 {cleanWord}
+              </span>
+              <span className="text-xs font-medium leading-snug text-white">
+                {tip.loading ? "Đang dịch…" : tip.vietnamese}
+              </span>
+              <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-900" />
+            </motion.span>
+          </AnimatePresence>,
+          document.body,
+        )}
     </button>
   );
 }
@@ -38,8 +150,14 @@ export default function MessageBubble({
   const isUser = message.role === "user";
 
   // Show the coach's rewrite only when it actually differs from what the
-  // learner typed (the model returns the text unchanged when it was fine).
-  const normalize = (text) => (text || "").trim().replace(/\s+/g, " ");
+  // learner typed. Capitalization and punctuation are ignored — a sentence
+  // that is only "fixed" by adding a capital or a "?" is treated as correct.
+  const normalize = (text) =>
+    (text || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, "")
+      .trim()
+      .replace(/\s+/g, " ");
   const hasCorrection =
     isUser &&
     message.corrected &&
@@ -114,6 +232,7 @@ export default function MessageBubble({
                     key={`${word}-${i}`}
                     word={word}
                     onWordClick={onWordClick}
+                    contextSentence={message.english || message.content}
                   />
                 ))}
             </p>

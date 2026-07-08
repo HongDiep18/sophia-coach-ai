@@ -29,3 +29,12 @@ export type WordLookupReply = {
   /** Two IPA strings, e.g. UK vs US or two common variants */
   transliterations: [string, string];
 };
+
+/**
+ * Lightweight reply for the hover tooltip: just a short Vietnamese gloss of a
+ * word in context (e.g. "atmosphere" -> "bầu không khí"). Much cheaper than the
+ * full WordLookupReply because the model only generates a few words.
+ */
+export type WordGlossReply = {
+  vietnamese: string;
+};
