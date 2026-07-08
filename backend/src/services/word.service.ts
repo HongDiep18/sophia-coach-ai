@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { generateStructuredJson } from "./gemini.service.js";
-import type { WordLookupReply } from "../types/ai.js";
+import type { WordGlossReply, WordLookupReply } from "../types/ai.js";
+
+const wordGlossSchema = z.object({
+  vietnamese: z.string().min(1).max(80),
+});
 
 const wordReplySchema = z.object({
   definition: z.string().min(1),
@@ -31,4 +35,27 @@ Context sentence: ${input.contextSentence || "(none)"}
     ...parsed,
     transliterations: [parsed.transliterations[0], parsed.transliterations[1]],
   };
+}
+
+/**
+ * Cheap counterpart to lookupWord for the hover tooltip: asks the model for a
+ * SHORT Vietnamese gloss only (a few words), so it costs a fraction of the
+ * tokens of the full lookup.
+ */
+export async function glossWord(input: {
+  word: string;
+  contextSentence?: string;
+}): Promise<WordGlossReply> {
+  const prompt = `
+Translate a single English word into Vietnamese for a learner.
+Return STRICT JSON with ONE key: vietnamese.
+- vietnamese: the SHORT core meaning only — a word or brief phrase (max ~5 words).
+  No definition, no explanation, no example. Choose the sense that fits the context.
+Example: word "atmosphere" -> {"vietnamese": "bầu không khí"}
+Word: ${input.word}
+Context sentence: ${input.contextSentence || "(none)"}
+`.trim();
+
+  const result = await generateStructuredJson<WordGlossReply>(prompt);
+  return wordGlossSchema.parse(result);
 }
