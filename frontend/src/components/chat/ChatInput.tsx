@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Mic, MicOff, Send } from "lucide-react";
+import { useRef, useState } from "react";
+import { useToast } from "../ui/toast";
 
 type ChatInputProps = {
   onSend: (text: string) => void;
@@ -39,6 +40,7 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
   const [text, setText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const toast = useToast();
 
   const sendText = (value: string) => {
     const normalized = value.trim();
@@ -49,7 +51,7 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
 
   const toggleVoice = () => {
     if (!isSpeechRecognitionSupported()) {
-      alert("Speech recognition is not supported in this browser.");
+      toast.error("Speech recognition is not supported in this browser.");
       return;
     }
 
@@ -108,7 +110,9 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
             onKeyDown={(e) => {
               if (e.key === "Enter") sendText(text);
             }}
-            placeholder={isListening ? "Listening..." : "Type or speak English..."}
+            placeholder={
+              isListening ? "Listening..." : "Type or speak English..."
+            }
             disabled={isLoading}
             className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-12 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-200 disabled:opacity-70"
           />
