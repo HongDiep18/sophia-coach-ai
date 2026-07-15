@@ -1,20 +1,30 @@
 # Sophia Coach AI — Frontend
 
-React (Vite) app for the English coach chat, vocabulary bank, and settings. It talks to the **backend** for Gemini-powered chat and word lookup; the API key stays on the server.
+React (Vite) app for the Sophia English coach: a real‑time **voice assistant**, a **chat** coach, a **vocabulary bank**, **settings**, and a floating **help chatbot**. It talks to the **backend** for all Gemini‑powered features — the API key stays on the server.
+
+## Features
+
+- **Voice Assistant** (home route `/`) — speak to Sophia and get streamed spoken replies plus correction cards over a WebSocket.
+- **Chat** (`/chat`) — text coaching with tap‑to‑look‑up words and per‑word Vietnamese glosses.
+- **Vocabulary** (`/vocabulary`) — save, review, and update the learning status of words.
+- **Settings** (`/settings`) — preferences such as auto‑speak.
+- **Floating help chatbot** — a RAG‑backed assistant that answers questions about the app.
 
 ## Stack
 
 - React 19 + Vite 8
-- React Router
+- React Router 7
 - Tailwind CSS v4 (`@tailwindcss/vite`)
-- TypeScript (API + `src/lib`; pages/components may stay `.jsx`)
+- TypeScript throughout (`.ts` / `.tsx`)
 - Framer Motion, Lucide React
-- `@tanstack/react-query` (available if you use it in pages)
+- `@tanstack/react-query` for data fetching/mutations
+- Browser `Web Speech` / `SpeechSynthesis` APIs for voice input and playback
 
 ## Prerequisites
 
 - Node.js 20+ recommended
-- Backend running (see `../backend/README.md`) when using real AI
+- Backend running (see [`../backend/README.md`](../backend/README.md)) for any AI feature — chat, voice, word lookup, vocabulary, and the help bot all call the backend.
+- A Chromium‑based browser is recommended for the fullest speech‑recognition support.
 
 ## Setup
 
@@ -23,7 +33,7 @@ cd frontend
 npm install
 ```
 
-Copy environment template:
+Copy the environment template:
 
 ```bash
 copy .env.example .env
@@ -35,7 +45,7 @@ On macOS/Linux:
 cp .env.example .env
 ```
 
-Set **`VITE_API_BASE_URL`** to your backend URL (default `http://localhost:4000`). Vite only exposes variables prefixed with `VITE_`.
+Set **`VITE_API_BASE_URL`** to your backend URL (default `http://localhost:4000`). The voice WebSocket URL is derived from this base. Vite only exposes variables prefixed with `VITE_`.
 
 ## Run
 
@@ -77,15 +87,28 @@ Then open the URL Vite prints (usually `http://localhost:5173`).
 
 ```text
 src/
-  api/           # HTTP client + chat/word endpoints (TypeScript)
-  lib/           # Browser helpers (vocab localStorage, etc., TypeScript)
-  components/    # UI pieces (chat, layout, vocabulary)
-  pages/         # Routes: Chat, Vocabulary, Settings
-  main.jsx       # Entry
+  api/           # Per-feature HTTP client, services, types & react-query hooks
+    client.ts    #   Shared fetch wrapper (uses VITE_API_BASE_URL)
+    chat/        #   Coach chat
+    word/        #   Word lookup + gloss
+    vocab/       #   Vocabulary bank CRUD
+    chatbot/     #   Help bot
+  components/    # UI pieces
+    chat/        #   ChatInput, MessageBubble, WordLookupModal, SpeechControls
+    layouts/     #   AppLayout (shared shell + nav)
+    ui/          #   Toast, primitives
+    FloatingChatButton.tsx
+  pages/         # Routes: VoiceAssistant (/), Chat, Vocabulary, AppSettings
+  hooks/         # React hooks (e.g. useSpeechPlayback)
+  lib/           # Browser helpers (vocab, word lookup, speech playback)
+  App.tsx        # Router + providers
+  main.tsx       # Entry
   index.css      # Tailwind + global styles
 ```
 
 ## Troubleshooting
 
-- **Chat or word lookup fails:** Confirm backend is up and `VITE_API_BASE_URL` matches the backend `PORT`.
+- **Chat, voice, or word lookup fails:** Confirm the backend is up and `VITE_API_BASE_URL` matches the backend `PORT`.
+- **Voice assistant won't connect:** Check the backend's voice WebSocket is running (`ws://localhost:4000/ws/voice`) and that your browser has microphone permission.
+- **Help bot has no answers:** Make sure the backend's knowledge base has been ingested (`npm run db:ingest` in `backend`).
 - **Env changes ignored:** Restart `npm run dev` after editing `.env`.
