@@ -1,6 +1,7 @@
 # Sophia Coach AI — Backend
 
 Node.js + TypeScript (Express 5) API that powers the Sophia English‑coaching app. It proxies all AI requests to Google Gemini so the API key stays on the server — the frontend never sees it. On top of chat, it provides word lookup/glossing, a PostgreSQL‑backed vocabulary bank, a real‑time voice‑coaching WebSocket, and a retrieval‑augmented (RAG) help chatbot grounded in the app's own knowledge base.
+rag
 
 ## Features
 
