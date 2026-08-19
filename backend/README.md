@@ -10,7 +10,7 @@ Node.js + TypeScript (Express 5) API that powers the Sophia English‑coaching a
 - **Voice coaching** — streaming replies plus correction cards over a WebSocket (`/ws/voice`).
 - **Help chatbot (RAG)** — answers questions about the app from embedded Markdown docs using pgvector similarity search.
 
-## Prerequisites --
+## Prerequisites
 
 - **Node.js 20+** (recommended)
 - **PostgreSQL 14+** with the [`pgvector`](https://github.com/pgvector/pgvector) and `pgcrypto` extensions available (the schema enables them with `CREATE EXTENSION`)
