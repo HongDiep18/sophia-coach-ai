@@ -10,7 +10,7 @@ React (Vite) app for the Sophia English coach: a real‑time **voice assistant**
 - **Settings** (`/settings`) — preferences such as auto‑speak.
 - **Floating help chatbot** — a RAG‑backed assistant that answers questions about the app.
 
-## Stack
+## Stack technology
 
 - React 19 + Vite 8
 - React Router 7
